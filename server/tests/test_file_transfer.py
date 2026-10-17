@@ -136,8 +136,8 @@ class FileTransferTest(FileTestCase):
         response = self.client.send_packets([packets[0], packets[2]])
         self.assertEqual(response[1], GENERAL_ERROR)
         self.assertEqual(self.files_on_disk(), [])
-        self.assert_received(data, "a.bin", self.client.send_file(data,
-                                                                   "a.bin"))
+        retry = self.client.send_file(data, "a.bin")
+        self.assert_received(data, "a.bin", retry)
 
     def test_middle_packet_error_reported_once(self):
         data = os.urandom(3 * 1000)
@@ -146,8 +146,8 @@ class FileTransferTest(FileTestCase):
         packets[1] = change_header(packets[1], content_size=99999)
         response = self.client.send_packets(packets)
         self.assertEqual(response[1], GENERAL_ERROR)
-        self.assert_received(data, "a.bin", self.client.send_file(data,
-                                                                   "a.bin"))
+        retry = self.client.send_file(data, "a.bin")
+        self.assert_received(data, "a.bin", retry)
 
     def test_disconnect_in_middle_removes_temp_file(self):
         data = os.urandom(5000)

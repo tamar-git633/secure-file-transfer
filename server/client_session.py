@@ -158,9 +158,8 @@ class ClientSession:
         return ResponseCode.AES_KEY, build_aes_key_payload(client.id,
                                                            encrypted_key)
 
-    # Request 827: a client that registered before asks to reconnect.
-    # It gets a new AES key encrypted with the public key saved earlier,
-    # or 1606 if it is not registered or has no public key.
+    # Request 827: reconnect of a known client, sends a new AES key
+    # encrypted with the saved public key, or 1606
     def _handle_reconnect(self, header):
         name = parse_name_payload(self._read_payload(header.payload_size))
         client = self._store.get_by_name(name)
@@ -186,9 +185,8 @@ class ClientSession:
         return (ResponseCode.RECONNECT_DENIED,
                 build_client_id_payload(client_id))
 
-    # Request 828: one packet of an encrypted file. The response (1603)
-    # is sent only after the last packet. If a middle packet fails the
-    # transfer is dropped and the error is reported on the last packet.
+    # Request 828: one packet of an encrypted file.
+    # Answers only after the last packet.
     def _handle_file_packet(self, header):
         packet = parse_file_packet_header(
             self._read_payload(FILE_PACKET_HEADER.size))

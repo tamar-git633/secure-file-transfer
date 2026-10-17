@@ -10,9 +10,8 @@ MAX_FILE_SIZE = 1024 * 1024 * 1024
 FIRST_PACKET_NUMBERS = (0, 1)
 
 
-# Receives one encrypted file sent in several 828 packets.
-# Every piece is decrypted as it arrives and written to a temp file,
-# the cksum is calculated on the way.
+# Receives one encrypted file sent in 828 packets, decrypts every piece
+# as it arrives into a temp file and calculates the cksum on the way
 class FileReceiver:
     def __init__(self, first_packet, final_path, temp_path, aes_key):
         _check_first_packet(first_packet, final_path)
