@@ -39,6 +39,7 @@ class ClientSession:
         self._handlers = {
             RequestCode.REGISTER: self._handle_register,
             RequestCode.SEND_PUBLIC_KEY: self._handle_public_key,
+            RequestCode.RECONNECT: self._handle_reconnect,
         }
 
     def run(self):
@@ -132,6 +133,33 @@ class ClientSession:
                     name)
         return ResponseCode.AES_KEY, build_aes_key_payload(client.id,
                                                            encrypted_key)
+
+    # Request 827: a client that registered before asks to reconnect.
+    # It gets a new AES key encrypted with the public key saved earlier,
+    # or 1606 if it is not registered or has no public key.
+    def _handle_reconnect(self, header):
+        name = parse_name_payload(self._read_payload(header.payload_size))
+        client = self._store.get_by_name(name)
+
+        if client is None or client.id != header.client_id:
+            logger.warning("Reconnect denied: '%s' is not registered", name)
+            return self._reconnect_denied(header.client_id)
+        if client.public_key is None:
+            logger.warning("Reconnect denied: '%s' has no public key", name)
+            return self._reconnect_denied(header.client_id)
+
+        aes_key = generate_aes_key()
+        encrypted_key = encrypt_with_public_key(client.public_key, aes_key)
+        self._store.set_aes_key(client.id, aes_key)
+        self._client = client
+
+        logger.info("Client '%s' reconnected, sending new AES key", name)
+        return ResponseCode.RECONNECT_OK, build_aes_key_payload(client.id,
+                                                                encrypted_key)
+
+    def _reconnect_denied(self, client_id):
+        return (ResponseCode.RECONNECT_DENIED,
+                build_client_id_payload(client_id))
 
     def _find_client(self, client_id, name):
         client = self._store.get_by_id(client_id)

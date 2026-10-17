@@ -9,6 +9,8 @@ from storage import ClientStore
 from server import Server
 from tests.fake_client import (
     AES_KEY,
+    RECONNECT,
+    RECONNECT_OK,
     REGISTER,
     REGISTER_OK,
     SEND_PUBLIC_KEY,
@@ -19,6 +21,7 @@ from tests.fake_client import (
 
 RSA_KEY = generate_rsa_key()
 REGISTER_FAILED = 1601
+RECONNECT_DENIED = 1606
 GENERAL_ERROR = 1607
 SERVER_VERSION = 3
 
@@ -190,6 +193,60 @@ class PublicKeyTest(ServerTestCase):
             stored = self.store.get_by_name("alice")
             self.assertIsNone(stored.public_key)
             self.assertIsNone(stored.aes_key)
+
+
+class ReconnectTest(ServerTestCase):
+    def register_with_key(self, name):
+        with self.connect() as client:
+            client.register(name)
+            client.send_public_key(name, RSA_KEY)
+            return client.client_id, client.aes_key
+
+    def test_reconnect_success(self):
+        client_id, first_key = self.register_with_key("alice")
+        with self.connect() as client:
+            client.client_id = client_id
+            _, code, payload = client.reconnect("alice", RSA_KEY)
+            self.assertEqual(code, RECONNECT_OK)
+            self.assertEqual(payload[:16], client_id)
+            self.assertEqual(len(payload), 16 + 128)
+            self.assertEqual(len(client.aes_key), 32)
+            self.assertNotEqual(client.aes_key, first_key)
+            self.assertEqual(self.store.get_by_id(client_id).aes_key,
+                             client.aes_key)
+
+    def test_unknown_name(self):
+        with self.connect() as client:
+            client.client_id = b"\x07" * 16
+            _, code, payload = client.reconnect("nobody", RSA_KEY)
+            self.assertEqual(code, RECONNECT_DENIED)
+            self.assertEqual(payload, b"\x07" * 16)
+
+    def test_registered_without_public_key(self):
+        with self.connect() as client:
+            client.register("alice")
+            self.assertEqual(client.reconnect("alice", RSA_KEY)[1],
+                             RECONNECT_DENIED)
+
+    def test_id_does_not_match_name(self):
+        self.register_with_key("alice")
+        with self.connect() as client:
+            client.client_id = b"\x01" * 16
+            self.assertEqual(client.reconnect("alice", RSA_KEY)[1],
+                             RECONNECT_DENIED)
+
+    def test_register_after_denied(self):
+        with self.connect() as client:
+            self.assertEqual(client.reconnect("alice", RSA_KEY)[1],
+                             RECONNECT_DENIED)
+            self.assertEqual(client.register("alice")[1], REGISTER_OK)
+            self.assertEqual(client.send_public_key("alice", RSA_KEY)[1],
+                             AES_KEY)
+
+    def test_bad_name_field(self):
+        with self.connect() as client:
+            self.assertEqual(client.request(RECONNECT, b"a" * 255)[1],
+                             GENERAL_ERROR)
 
 
 if __name__ == "__main__":

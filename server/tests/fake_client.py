@@ -11,8 +11,10 @@ CLIENT_VERSION = 3
 NAME_SIZE = 255
 REGISTER = 825
 SEND_PUBLIC_KEY = 826
+RECONNECT = 827
 REGISTER_OK = 1600
 AES_KEY = 1602
+RECONNECT_OK = 1605
 CLIENT_ID_SIZE = 16
 RSA_BITS = 1024
 CRYPTOPP_RSA_EXPONENT = 17
@@ -68,10 +70,18 @@ class FakeClient:
         public_der = rsa_key.public_key().export_key("DER")
         response = self.request(SEND_PUBLIC_KEY,
                                 name_field(name) + public_der)
-        if response[1] == AES_KEY:
+        self._take_aes_key(response, AES_KEY, rsa_key)
+        return response
+
+    def reconnect(self, name, rsa_key):
+        response = self.request(RECONNECT, name_field(name))
+        self._take_aes_key(response, RECONNECT_OK, rsa_key)
+        return response
+
+    def _take_aes_key(self, response, expected_code, rsa_key):
+        if response[1] == expected_code:
             encrypted = response[2][CLIENT_ID_SIZE:]
             self.aes_key = PKCS1_OAEP.new(rsa_key).decrypt(encrypted)
-        return response
 
     def _recv_exact(self, size):
         data = b""
@@ -91,8 +101,22 @@ if __name__ == "__main__":
         _, code, payload = client.register(name)
         print(f"Response {code}, payload {payload.hex() or '(empty)'}")
         if code == REGISTER_OK:
+            rsa_key = generate_rsa_key()
             print("Sending public key")
-            _, code, payload = client.send_public_key(name,
-                                                      generate_rsa_key())
+            _, code, payload = client.send_public_key(name, rsa_key)
             print(f"Response {code}, payload {len(payload)} bytes")
             print(f"Decrypted AES key: {client.aes_key.hex()}")
+            client_id = client.client_id
+
+    if code == AES_KEY:
+        with FakeClient(port=port) as client:
+            client.client_id = client_id
+            print("Reconnecting on a new connection")
+            _, code, payload = client.reconnect(name, rsa_key)
+            print(f"Response {code}, payload {len(payload)} bytes")
+            print(f"Decrypted AES key: {client.aes_key.hex()}")
+
+    with FakeClient(port=port) as client:
+        print("Reconnecting with an unknown name")
+        _, code, payload = client.reconnect("Nobody", generate_rsa_key())
+        print(f"Response {code}, payload {payload.hex()}")

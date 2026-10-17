@@ -7,7 +7,7 @@ from config import read_port
 from protocol import SERVER_VERSION
 from storage import ClientStore
 
-ACCEPT_POLL_INTERVAL = 1.0
+ACCEPT_POLL_INTERVAL = 0.2
 
 logger = logging.getLogger(__name__)
 
