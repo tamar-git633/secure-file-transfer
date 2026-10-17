@@ -1,15 +1,17 @@
 import logging
 
-from crypto_utils import CryptoError
+from crypto_utils import CryptoError, encrypt_with_public_key, generate_aes_key
 from protocol import (
     CLIENT_VERSION,
     REQUEST_HEADER,
     ProtocolError,
     RequestCode,
     ResponseCode,
+    build_aes_key_payload,
     build_client_id_payload,
     build_response,
     parse_name_payload,
+    parse_public_key_payload,
     parse_request_header,
     validate_payload_size,
 )
@@ -36,6 +38,7 @@ class ClientSession:
         self._client = None
         self._handlers = {
             RequestCode.REGISTER: self._handle_register,
+            RequestCode.SEND_PUBLIC_KEY: self._handle_public_key,
         }
 
     def run(self):
@@ -111,6 +114,32 @@ class ClientSession:
         self._client = client
         logger.info("Registered '%s' with ID %s", name, client.id.hex())
         return ResponseCode.REGISTER_OK, build_client_id_payload(client.id)
+
+    # Request 826: saves the client's RSA public key, creates a new AES key
+    # and sends it back encrypted with that public key
+    def _handle_public_key(self, header):
+        name, public_key = parse_public_key_payload(
+            self._read_payload(header.payload_size))
+        client = self._find_client(header.client_id, name)
+
+        aes_key = generate_aes_key()
+        encrypted_key = encrypt_with_public_key(public_key, aes_key)
+        self._store.set_public_key(client.id, public_key)
+        self._store.set_aes_key(client.id, aes_key)
+        self._client = client
+
+        logger.info("Got public key from '%s', sending encrypted AES key",
+                    name)
+        return ResponseCode.AES_KEY, build_aes_key_payload(client.id,
+                                                           encrypted_key)
+
+    def _find_client(self, client_id, name):
+        client = self._store.get_by_id(client_id)
+        if client is None:
+            raise StorageError(f"Unknown client ID {client_id.hex()}")
+        if client.name != name:
+            raise StorageError(f"Name '{name}' does not match client ID")
+        return client
 
     def _read_payload(self, size):
         if size > self._unread:

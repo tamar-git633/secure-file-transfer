@@ -7,8 +7,17 @@ import unittest
 from storage import ClientStore
 
 from server import Server
-from tests.fake_client import REGISTER, REGISTER_OK, FakeClient, name_field
+from tests.fake_client import (
+    AES_KEY,
+    REGISTER,
+    REGISTER_OK,
+    SEND_PUBLIC_KEY,
+    FakeClient,
+    generate_rsa_key,
+    name_field,
+)
 
+RSA_KEY = generate_rsa_key()
 REGISTER_FAILED = 1601
 GENERAL_ERROR = 1607
 SERVER_VERSION = 3
@@ -127,6 +136,60 @@ class RegisterTest(ServerTestCase):
             code = client.request(REGISTER, name_field("alice")[:100])[1]
             self.assertEqual(code, GENERAL_ERROR)
             self.assertEqual(client.register("alice")[1], REGISTER_OK)
+
+
+class PublicKeyTest(ServerTestCase):
+    def test_public_key_returns_encrypted_aes_key(self):
+        with self.connect() as client:
+            client.register("alice")
+            _, code, payload = client.send_public_key("alice", RSA_KEY)
+            self.assertEqual(code, AES_KEY)
+            self.assertEqual(payload[:16], client.client_id)
+            self.assertEqual(len(payload), 16 + 128)
+            self.assertEqual(len(client.aes_key), 32)
+            stored = self.store.get_by_name("alice")
+            self.assertEqual(stored.aes_key, client.aes_key)
+            self.assertEqual(stored.public_key,
+                             RSA_KEY.public_key().export_key("DER"))
+
+    def test_on_new_connection_with_saved_id(self):
+        with self.connect() as client:
+            client.register("alice")
+            client_id = client.client_id
+        with self.connect() as client:
+            client.client_id = client_id
+            self.assertEqual(client.send_public_key("alice", RSA_KEY)[1],
+                             AES_KEY)
+
+    def test_new_aes_key_every_time(self):
+        with self.connect() as client:
+            client.register("alice")
+            client.send_public_key("alice", RSA_KEY)
+            first = client.aes_key
+            client.send_public_key("alice", RSA_KEY)
+            self.assertNotEqual(first, client.aes_key)
+
+    def test_unregistered_client(self):
+        with self.connect() as client:
+            client.client_id = b"\x01" * 16
+            self.assertEqual(client.send_public_key("alice", RSA_KEY)[1],
+                             GENERAL_ERROR)
+
+    def test_name_does_not_match_id(self):
+        with self.connect() as client:
+            client.register("alice")
+            self.assertEqual(client.send_public_key("bob", RSA_KEY)[1],
+                             GENERAL_ERROR)
+
+    def test_invalid_key_is_not_saved(self):
+        with self.connect() as client:
+            client.register("alice")
+            payload = name_field("alice") + b"\x00" * 160
+            self.assertEqual(client.request(SEND_PUBLIC_KEY, payload)[1],
+                             GENERAL_ERROR)
+            stored = self.store.get_by_name("alice")
+            self.assertIsNone(stored.public_key)
+            self.assertIsNone(stored.aes_key)
 
 
 if __name__ == "__main__":

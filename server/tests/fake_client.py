@@ -2,12 +2,24 @@ import socket
 import struct
 import sys
 
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
+
 HEADER = struct.Struct("<16sBHI")
 RESPONSE_HEADER = struct.Struct("<BHI")
 CLIENT_VERSION = 3
 NAME_SIZE = 255
 REGISTER = 825
+SEND_PUBLIC_KEY = 826
 REGISTER_OK = 1600
+AES_KEY = 1602
+CLIENT_ID_SIZE = 16
+RSA_BITS = 1024
+CRYPTOPP_RSA_EXPONENT = 17
+
+
+def generate_rsa_key():
+    return RSA.generate(RSA_BITS, e=CRYPTOPP_RSA_EXPONENT)
 
 
 def name_field(name):
@@ -18,7 +30,8 @@ def name_field(name):
 class FakeClient:
     def __init__(self, host="127.0.0.1", port=1234, timeout=10):
         self.sock = socket.create_connection((host, port), timeout=timeout)
-        self.client_id = bytes(16)
+        self.client_id = bytes(CLIENT_ID_SIZE)
+        self.aes_key = None
 
     def close(self):
         self.sock.close()
@@ -51,6 +64,15 @@ class FakeClient:
             self.client_id = response[2]
         return response
 
+    def send_public_key(self, name, rsa_key):
+        public_der = rsa_key.public_key().export_key("DER")
+        response = self.request(SEND_PUBLIC_KEY,
+                                name_field(name) + public_der)
+        if response[1] == AES_KEY:
+            encrypted = response[2][CLIENT_ID_SIZE:]
+            self.aes_key = PKCS1_OAEP.new(rsa_key).decrypt(encrypted)
+        return response
+
     def _recv_exact(self, size):
         data = b""
         while len(data) < size:
@@ -68,3 +90,9 @@ if __name__ == "__main__":
         print(f"Registering '{name}'")
         _, code, payload = client.register(name)
         print(f"Response {code}, payload {payload.hex() or '(empty)'}")
+        if code == REGISTER_OK:
+            print("Sending public key")
+            _, code, payload = client.send_public_key(name,
+                                                      generate_rsa_key())
+            print(f"Response {code}, payload {len(payload)} bytes")
+            print(f"Decrypted AES key: {client.aes_key.hex()}")
