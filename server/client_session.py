@@ -5,8 +5,11 @@ from protocol import (
     CLIENT_VERSION,
     REQUEST_HEADER,
     ProtocolError,
+    RequestCode,
     ResponseCode,
+    build_client_id_payload,
     build_response,
+    parse_name_payload,
     parse_request_header,
     validate_payload_size,
 )
@@ -30,7 +33,10 @@ class ClientSession:
         self._address = f"{address[0]}:{address[1]}"
         self._store = store
         self._unread = 0
-        self._handlers = {}
+        self._client = None
+        self._handlers = {
+            RequestCode.REGISTER: self._handle_register,
+        }
 
     def run(self):
         logger.info("Client connected from %s", self._address)
@@ -86,6 +92,25 @@ class ClientSession:
             raise ProtocolError(f"Unsupported request code {header.code}")
         validate_payload_size(header.code, header.payload_size)
         return handler(header)
+
+    # Request 825: registers a new client name and returns its new UUID.
+    # The client ID in the header is ignored.
+    def _handle_register(self, header):
+        try:
+            name = parse_name_payload(self._read_payload(header.payload_size))
+        except ProtocolError as e:
+            logger.warning("Registration rejected: %s", e)
+            return ResponseCode.REGISTER_FAILED, b""
+
+        client = self._store.register(name)
+        if client is None:
+            logger.warning("Registration rejected: name '%s' already exists",
+                           name)
+            return ResponseCode.REGISTER_FAILED, b""
+
+        self._client = client
+        logger.info("Registered '%s' with ID %s", name, client.id.hex())
+        return ResponseCode.REGISTER_OK, build_client_id_payload(client.id)
 
     def _read_payload(self, size):
         if size > self._unread:

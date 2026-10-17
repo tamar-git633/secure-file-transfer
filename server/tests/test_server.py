@@ -7,8 +7,9 @@ import unittest
 from storage import ClientStore
 
 from server import Server
-from tests.fake_client import FakeClient
+from tests.fake_client import REGISTER, REGISTER_OK, FakeClient, name_field
 
+REGISTER_FAILED = 1601
 GENERAL_ERROR = 1607
 SERVER_VERSION = 3
 
@@ -79,6 +80,53 @@ class SessionBasicsTest(ServerTestCase):
         finally:
             for client in clients:
                 client.close()
+
+
+class RegisterTest(ServerTestCase):
+    def test_register_success(self):
+        with self.connect() as client:
+            version, code, payload = client.register("alice")
+            self.assertEqual(version, SERVER_VERSION)
+            self.assertEqual(code, REGISTER_OK)
+            self.assertEqual(len(payload), 16)
+            self.assertEqual(self.store.get_by_name("alice").id, payload)
+
+    def test_duplicate_name(self):
+        with self.connect() as client:
+            client.register("alice")
+        with self.connect() as client:
+            _, code, payload = client.register("alice")
+            self.assertEqual(code, REGISTER_FAILED)
+            self.assertEqual(payload, b"")
+
+    def test_two_names_get_different_ids(self):
+        with self.connect() as first, self.connect() as second:
+            id1 = first.register("alice")[2]
+            id2 = second.register("bob")[2]
+            self.assertNotEqual(id1, id2)
+
+    def test_client_id_in_header_is_ignored(self):
+        with self.connect() as client:
+            client.client_id = b"\xff" * 16
+            code = client.register("alice")[1]
+            self.assertEqual(code, REGISTER_OK)
+            self.assertNotEqual(client.client_id, b"\xff" * 16)
+
+    def test_name_not_null_terminated(self):
+        with self.connect() as client:
+            code = client.request(REGISTER, b"a" * 255)[1]
+            self.assertEqual(code, REGISTER_FAILED)
+
+    def test_empty_name(self):
+        with self.connect() as client:
+            code = client.request(REGISTER, bytes(255))[1]
+            self.assertEqual(code, REGISTER_FAILED)
+
+    def test_wrong_payload_size(self):
+        with self.connect() as client:
+            code = client.request(REGISTER, name_field("alice")[:100])[1]
+            self.assertEqual(code, GENERAL_ERROR)
+            self.assertEqual(client.register("alice")[1], REGISTER_OK)
 
 
 if __name__ == "__main__":
