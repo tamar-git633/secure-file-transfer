@@ -66,7 +66,7 @@
 | 2.2 | `protocol.py` – קבועים ו-pack/unpack | IntEnum לקודים, פורמטי struct, `pack_name`/`unpack_name` | פענוח כותרת מ-bytes ידניים; שם בלי null → שגיאה; round-trip של כל payload |
 | 2.3 | `cksum.py` – CRC מצטבר | מחלקה `Cksum` + `memcrc` | `"123456789"` → `930766865`; חישוב בקטעים = חישוב בבת אחת |
 | 2.4 | `crypto_utils.py` – RSA ו-AES | `generate_aes_key`, `encrypt_with_public_key`, `decrypt_file_streaming` | הצפנה+פענוח הדדי; פענוח בבלוקים = פענוח בבת אחת; נוסחת ContentSize עבור 0/15/16/17/100000 |
-| 2.5 | `storage.py` – לקוחות וקבצים | `ClientStore` עם Lock, `sanitize_file_name`, נתיבים, מחיקה | רישום כפול → נכשל; `..\x`, `a/b`, `CON.txt`, `x?`, ריק, `name.` → נדחים; `file.pdf` → עובר |
+| 2.5 | `storage.py` – לקוחות וקבצים | `ClientStore` עם Lock, `sanitize_file_name`, נתיבים, מחיקה | רישום כפול → נכשל; `..\x`, `CON.txt`, `x?`, ריק, `name.` → נדחים; `file.pdf` → עובר; `c:\doc\f.docx` → `f.docx` |
 | 2.6 | `ruff` על כל מה שנכתב | קוד נקי | `py -3.12 -m ruff check server` → 0 שגיאות |
 
 ---
