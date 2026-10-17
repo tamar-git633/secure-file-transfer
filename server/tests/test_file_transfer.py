@@ -7,14 +7,19 @@ from pathlib import Path
 from cksum import memcrc
 
 from tests.fake_client import (
+    CRC_ABORT,
+    CRC_OK,
+    CRC_RETRY,
     FILE_RECEIVED_CODE,
     SEND_FILE,
     build_file_packets,
+    name_field,
     parse_file_received,
 )
 from tests.test_server import GENERAL_ERROR, RSA_KEY, ServerTestCase
 
 PACKET_PREFIX = struct.Struct("<IIHH")
+ACK = 1604
 
 
 def change_header(packet, **fields):
@@ -28,7 +33,7 @@ def change_header(packet, **fields):
     return prefix + packet[PACKET_PREFIX.size:]
 
 
-class FileTransferTest(ServerTestCase):
+class FileTestCase(ServerTestCase):
     def setUp(self):
         super().setUp()
         self.client = self.connect()
@@ -56,6 +61,8 @@ class FileTransferTest(ServerTestCase):
         record = self.store.get_file(self.client.client_id, file_name)
         self.assertFalse(record.verified)
 
+
+class FileTransferTest(FileTestCase):
     def test_various_sizes(self):
         for size in (0, 1, 15, 16, 17, 100_000, 64 * 1024 - 16, 64 * 1024,
                      200_000):
@@ -155,6 +162,65 @@ class FileTransferTest(ServerTestCase):
         while self.files_on_disk() and time.time() < deadline:
             time.sleep(0.05)
         self.assertEqual(self.files_on_disk(), [])
+
+
+class CrcRequestTest(FileTestCase):
+    def setUp(self):
+        super().setUp()
+        self.data = os.urandom(20_000)
+        self.client.send_file(self.data, "a.bin")
+
+    def crc(self, code, name="a.bin"):
+        return self.client.request(code, name_field(name))
+
+    def test_crc_ok(self):
+        _, code, payload = self.crc(CRC_OK)
+        self.assertEqual(code, ACK)
+        self.assertEqual(payload, self.client.client_id)
+        self.assertTrue(
+            self.store.get_file(self.client.client_id, "a.bin").verified)
+        self.assertEqual(self.files_on_disk(), ["a.bin"])
+
+    def test_crc_ok_unknown_file(self):
+        self.assertEqual(self.crc(CRC_OK, "other.bin")[1], GENERAL_ERROR)
+
+    def test_crc_retry_deletes_file_without_response(self):
+        self.client.send(CRC_RETRY, name_field("a.bin"))
+        response = self.client.send_file(self.data, "a.bin")
+        self.assertEqual(response[1], FILE_RECEIVED_CODE)
+        self.assertEqual(self.crc(CRC_OK)[1], ACK)
+
+    def test_crc_retry_removes_file_from_disk(self):
+        self.client.send(CRC_RETRY, name_field("a.bin"))
+        self.assertEqual(self.crc(CRC_OK)[1], GENERAL_ERROR)
+        self.assertEqual(self.files_on_disk(), [])
+
+    def test_three_retries_then_abort(self):
+        for _ in range(3):
+            self.client.send(CRC_RETRY, name_field("a.bin"))
+            self.client.send_file(self.data, "a.bin")
+        _, code, payload = self.crc(CRC_ABORT)
+        self.assertEqual(code, ACK)
+        self.assertEqual(payload, self.client.client_id)
+        self.assertEqual(self.files_on_disk(), [])
+        self.assertIsNone(self.store.get_file(self.client.client_id, "a.bin"))
+
+    def test_abort_unknown_file(self):
+        self.assertEqual(self.crc(CRC_ABORT, "other.bin")[1], ACK)
+        self.assertEqual(self.files_on_disk(), ["a.bin"])
+
+    def test_crc_with_wrong_client_id(self):
+        self.client.client_id = b"\x02" * 16
+        self.assertEqual(self.crc(CRC_OK)[1], GENERAL_ERROR)
+
+    def test_crc_before_register(self):
+        with self.connect() as other:
+            self.assertEqual(
+                other.request(CRC_OK, name_field("a.bin"))[1], GENERAL_ERROR)
+
+    def test_crc_bad_name_field(self):
+        self.assertEqual(self.client.request(CRC_OK, b"x" * 255)[1],
+                         GENERAL_ERROR)
 
 
 if __name__ == "__main__":

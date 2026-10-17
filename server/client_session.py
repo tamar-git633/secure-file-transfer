@@ -47,6 +47,9 @@ class ClientSession:
             RequestCode.SEND_PUBLIC_KEY: self._handle_public_key,
             RequestCode.RECONNECT: self._handle_reconnect,
             RequestCode.SEND_FILE: self._handle_file_packet,
+            RequestCode.CRC_OK: self._handle_crc_ok,
+            RequestCode.CRC_RETRY: self._handle_crc_retry,
+            RequestCode.CRC_ABORT: self._handle_crc_abort,
         }
 
     def run(self):
@@ -234,9 +237,42 @@ class ClientSession:
         return packet_index(packet, first) >= packet.total_packets
 
     def _require_aes_key(self, header):
-        if self._client is None or self._aes_key is None:
+        client = self._require_client(header)
+        if self._aes_key is None:
             raise ProtocolError("No AES key yet, send public key or "
                                 "reconnect first")
+        return client
+
+    # Request 900: the client's CRC matches, the file is marked as verified
+    def _handle_crc_ok(self, header):
+        client, file_name = self._read_crc_request(header)
+        self._store.set_verified(client.id, file_name)
+        logger.info("File '%s' verified by '%s'", file_name, client.name)
+        return ResponseCode.ACK, build_client_id_payload(client.id)
+
+    # Request 901: CRC mismatch, the client will send the file again.
+    # The bad file is deleted and no response is sent.
+    def _handle_crc_retry(self, header):
+        client, file_name = self._read_crc_request(header)
+        self._store.remove_file(client.id, file_name)
+        logger.warning("CRC mismatch on '%s', waiting for the file again",
+                       file_name)
+
+    # Request 902: CRC failed for the fourth time, the client gives up.
+    # The file is deleted from disk together with its record.
+    def _handle_crc_abort(self, header):
+        client, file_name = self._read_crc_request(header)
+        self._store.remove_file(client.id, file_name)
+        logger.error("CRC failed 4 times on '%s', file deleted", file_name)
+        return ResponseCode.ACK, build_client_id_payload(client.id)
+
+    def _read_crc_request(self, header):
+        file_name = parse_name_payload(self._read_payload(header.payload_size))
+        return self._require_client(header), file_name
+
+    def _require_client(self, header):
+        if self._client is None:
+            raise ProtocolError("Client did not register or reconnect")
         if header.client_id != self._client.id:
             raise ProtocolError("Client ID does not match this session")
         return self._client

@@ -17,6 +17,9 @@ REGISTER = 825
 SEND_PUBLIC_KEY = 826
 RECONNECT = 827
 SEND_FILE = 828
+CRC_OK = 900
+CRC_RETRY = 901
+CRC_ABORT = 902
 REGISTER_OK = 1600
 AES_KEY = 1602
 FILE_RECEIVED_CODE = 1603
@@ -157,5 +160,12 @@ if __name__ == "__main__":
             print(f"Sending '{file_name}' ({len(data)} bytes)")
             _, code, payload = client.send_file(data, file_name)
             _, size, got_name, crc = parse_file_received(payload)
+            local_crc = memcrc(data)
             print(f"Response {code}: '{got_name}', {size} bytes, "
-                  f"server cksum {crc}, local cksum {memcrc(data)}")
+                  f"server cksum {crc}, local cksum {local_crc}")
+            if crc == local_crc:
+                _, code, _ = client.request(CRC_OK, name_field(file_name))
+                print(f"Sent CRC OK (900), response {code}")
+            else:
+                _, code, _ = client.request(CRC_ABORT, name_field(file_name))
+                print(f"Sent CRC ABORT (902), response {code}")
