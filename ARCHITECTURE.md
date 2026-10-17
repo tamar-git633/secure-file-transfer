@@ -114,7 +114,7 @@ DefensivyProject/
 | נושא | לקוח (Crypto++) | שרת (PyCryptodome) |
 |---|---|---|
 | RSA | 1024 ביט, `RSAES_OAEP_SHA_Encryptor/Decryptor` | `PKCS1_OAEP.new(key)` (SHA-1 – ברירת מחדל, תואם) |
-| מפתח ציבורי | X.509 DER, ‏**160 בתים** | `RSA.import_key(der_bytes)` |
+| מפתח ציבורי | X.509 DER, ‏**160 בתים** (Crypto++ משתמש ב-e=17) | `RSA.import_key(der_bytes)`; בלקוח-דמה: `RSA.generate(1024, e=17)` – עם ברירת המחדל e=65537 יוצא 162 בתים! |
 | AES | 256 ביט, CBC, ‏IV = 16 אפסים, ריפוד PKCS7 (ברירת מחדל של `StreamTransformationFilter`) | `AES.new(key, AES.MODE_CBC, iv=bytes(16))` + `unpad(..., 16)` |
 | מפתח AES מוצפן | 128 בתים (RSA-1024) | |
 | CRC | cksum של POSIX (לא `zlib.crc32`!) | אותו אלגוריתם |
