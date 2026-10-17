@@ -1,15 +1,19 @@
 import logging
 
 from crypto_utils import CryptoError, encrypt_with_public_key, generate_aes_key
+from file_receiver import FIRST_PACKET_NUMBERS, FileReceiver, packet_index
 from protocol import (
     CLIENT_VERSION,
+    FILE_PACKET_HEADER,
     REQUEST_HEADER,
     ProtocolError,
     RequestCode,
     ResponseCode,
     build_aes_key_payload,
     build_client_id_payload,
+    build_file_received_payload,
     build_response,
+    parse_file_packet_header,
     parse_name_payload,
     parse_public_key_payload,
     parse_request_header,
@@ -36,10 +40,13 @@ class ClientSession:
         self._store = store
         self._unread = 0
         self._client = None
+        self._aes_key = None
+        self._transfer = None
         self._handlers = {
             RequestCode.REGISTER: self._handle_register,
             RequestCode.SEND_PUBLIC_KEY: self._handle_public_key,
             RequestCode.RECONNECT: self._handle_reconnect,
+            RequestCode.SEND_FILE: self._handle_file_packet,
         }
 
     def run(self):
@@ -57,6 +64,7 @@ class ClientSession:
         except OSError as e:
             logger.warning("Connection error with %s: %s", self._address, e)
         finally:
+            self._abort_transfer()
             self._close()
 
     def _handle_request(self):
@@ -128,6 +136,7 @@ class ClientSession:
         self._store.set_public_key(client.id, public_key)
         self._store.set_aes_key(client.id, aes_key)
         self._client = client
+        self._aes_key = aes_key
 
         logger.info("Got public key from '%s', sending encrypted AES key",
                     name)
@@ -152,6 +161,7 @@ class ClientSession:
         encrypted_key = encrypt_with_public_key(client.public_key, aes_key)
         self._store.set_aes_key(client.id, aes_key)
         self._client = client
+        self._aes_key = aes_key
 
         logger.info("Client '%s' reconnected, sending new AES key", name)
         return ResponseCode.RECONNECT_OK, build_aes_key_payload(client.id,
@@ -160,6 +170,83 @@ class ClientSession:
     def _reconnect_denied(self, client_id):
         return (ResponseCode.RECONNECT_DENIED,
                 build_client_id_payload(client_id))
+
+    # Request 828: one packet of an encrypted file. The response (1603)
+    # is sent only after the last packet. If a middle packet fails the
+    # transfer is dropped and the error is reported on the last packet.
+    def _handle_file_packet(self, header):
+        packet = parse_file_packet_header(
+            self._read_payload(FILE_PACKET_HEADER.size))
+        is_last = self._is_last_packet(packet)
+        try:
+            return self._receive_packet(header, packet)
+        except (ConnectionClosedError, ConnectionError, TimeoutError):
+            self._abort_transfer()
+            raise
+        except Exception as e:
+            self._abort_transfer()
+            if is_last:
+                raise
+            logger.error("File packet %d rejected: %s",
+                         packet.packet_number, e)
+            return None
+
+    def _receive_packet(self, header, packet):
+        client = self._require_aes_key(header)
+        content_length = self._unread
+
+        transfer = self._transfer
+        if transfer is None or packet.packet_number != transfer.next_number:
+            self._abort_transfer()
+            final_path, temp_path = self._store.file_paths(client.id,
+                                                           packet.file_name)
+            transfer = FileReceiver(packet, final_path, temp_path,
+                                    self._aes_key)
+            self._transfer = transfer
+            logger.info("Receiving '%s': %d bytes in %d packets",
+                        packet.file_name, packet.content_size,
+                        packet.total_packets)
+
+        transfer.start_packet(packet, content_length)
+        while self._unread:
+            size = min(self._unread, RECV_CHUNK_SIZE)
+            transfer.write(self._read_payload(size))
+
+        if not transfer.is_last(packet):
+            return None
+
+        cksum = transfer.complete()
+        self._transfer = None
+        self._store.add_file(client.id, packet.file_name,
+                             transfer.final_path)
+        logger.info("File '%s' saved to %s, cksum %d",
+                    packet.file_name, transfer.final_path, cksum)
+        return ResponseCode.FILE_RECEIVED, build_file_received_payload(
+            client.id, transfer.content_size, packet.file_name, cksum)
+
+    def _is_last_packet(self, packet):
+        transfer = self._transfer
+        if transfer and packet.packet_number == transfer.next_number:
+            return transfer.is_last(packet)
+        first = packet.packet_number
+        if first not in FIRST_PACKET_NUMBERS:
+            first = 1
+        return packet_index(packet, first) >= packet.total_packets
+
+    def _require_aes_key(self, header):
+        if self._client is None or self._aes_key is None:
+            raise ProtocolError("No AES key yet, send public key or "
+                                "reconnect first")
+        if header.client_id != self._client.id:
+            raise ProtocolError("Client ID does not match this session")
+        return self._client
+
+    def _abort_transfer(self):
+        if self._transfer:
+            logger.warning("Dropping unfinished transfer of '%s'",
+                           self._transfer.file_name)
+            self._transfer.abort()
+            self._transfer = None
 
     def _find_client(self, client_id, name):
         client = self._store.get_by_id(client_id)

@@ -2,22 +2,29 @@ import socket
 import struct
 import sys
 
-from Crypto.Cipher import PKCS1_OAEP
+from cksum import memcrc
+from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
+from Crypto.Util.Padding import pad
 
 HEADER = struct.Struct("<16sBHI")
 RESPONSE_HEADER = struct.Struct("<BHI")
+FILE_PACKET_HEADER = struct.Struct("<IIHH")
+FILE_RECEIVED = struct.Struct("<16sI255sI")
 CLIENT_VERSION = 3
 NAME_SIZE = 255
 REGISTER = 825
 SEND_PUBLIC_KEY = 826
 RECONNECT = 827
+SEND_FILE = 828
 REGISTER_OK = 1600
 AES_KEY = 1602
+FILE_RECEIVED_CODE = 1603
 RECONNECT_OK = 1605
 CLIENT_ID_SIZE = 16
 RSA_BITS = 1024
 CRYPTOPP_RSA_EXPONENT = 17
+PACKET_SIZE = 64 * 1024
 
 
 def generate_rsa_key():
@@ -26,6 +33,29 @@ def generate_rsa_key():
 
 def name_field(name):
     return name.encode().ljust(NAME_SIZE, b"\x00")
+
+
+def aes_encrypt(key, data):
+    return AES.new(key, AES.MODE_CBC, iv=bytes(16)).encrypt(pad(data, 16))
+
+
+# Builds the 828 payloads for a file, split into packets of packet_size
+def build_file_packets(data, file_name, aes_key, packet_size=PACKET_SIZE,
+                       first_number=1):
+    encrypted = aes_encrypt(aes_key, data)
+    pieces = [encrypted[i:i + packet_size]
+              for i in range(0, len(encrypted), packet_size)]
+    packets = []
+    for i, piece in enumerate(pieces):
+        header = FILE_PACKET_HEADER.pack(len(encrypted), len(data),
+                                         first_number + i, len(pieces))
+        packets.append(header + name_field(file_name) + piece)
+    return packets
+
+
+def parse_file_received(payload):
+    client_id, size, name, crc = FILE_RECEIVED.unpack(payload)
+    return client_id, size, name.split(b"\x00")[0].decode(), crc
 
 
 # Minimal protocol client used to test the server without the C++ client
@@ -78,6 +108,15 @@ class FakeClient:
         self._take_aes_key(response, RECONNECT_OK, rsa_key)
         return response
 
+    def send_packets(self, packets):
+        for packet in packets:
+            self.send(SEND_FILE, packet)
+        return self.receive()
+
+    def send_file(self, data, file_name, **kwargs):
+        packets = build_file_packets(data, file_name, self.aes_key, **kwargs)
+        return self.send_packets(packets)
+
     def _take_aes_key(self, response, expected_code, rsa_key):
         if response[1] == expected_code:
             encrypted = response[2][CLIENT_ID_SIZE:]
@@ -93,30 +132,30 @@ class FakeClient:
         return data
 
 
+# Usage (from the server folder):
+#   py -3.12 -m tests.fake_client <port> <name> [file to send]
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 1234
     name = sys.argv[2] if len(sys.argv) > 2 else "Fake Client"
+    path = sys.argv[3] if len(sys.argv) > 3 else None
+
     with FakeClient(port=port) as client:
         print(f"Registering '{name}'")
         _, code, payload = client.register(name)
         print(f"Response {code}, payload {payload.hex() or '(empty)'}")
-        if code == REGISTER_OK:
-            rsa_key = generate_rsa_key()
-            print("Sending public key")
-            _, code, payload = client.send_public_key(name, rsa_key)
-            print(f"Response {code}, payload {len(payload)} bytes")
-            print(f"Decrypted AES key: {client.aes_key.hex()}")
-            client_id = client.client_id
+        if code != REGISTER_OK:
+            sys.exit(1)
 
-    if code == AES_KEY:
-        with FakeClient(port=port) as client:
-            client.client_id = client_id
-            print("Reconnecting on a new connection")
-            _, code, payload = client.reconnect(name, rsa_key)
-            print(f"Response {code}, payload {len(payload)} bytes")
-            print(f"Decrypted AES key: {client.aes_key.hex()}")
+        print("Sending public key")
+        _, code, payload = client.send_public_key(name, generate_rsa_key())
+        print(f"Response {code}, AES key {client.aes_key.hex()}")
 
-    with FakeClient(port=port) as client:
-        print("Reconnecting with an unknown name")
-        _, code, payload = client.reconnect("Nobody", generate_rsa_key())
-        print(f"Response {code}, payload {payload.hex()}")
+        if path:
+            with open(path, "rb") as f:
+                data = f.read()
+            file_name = path.replace("\\", "/").split("/")[-1]
+            print(f"Sending '{file_name}' ({len(data)} bytes)")
+            _, code, payload = client.send_file(data, file_name)
+            _, size, got_name, crc = parse_file_received(payload)
+            print(f"Response {code}: '{got_name}', {size} bytes, "
+                  f"server cksum {crc}, local cksum {memcrc(data)}")
