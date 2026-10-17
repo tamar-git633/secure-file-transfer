@@ -36,27 +36,48 @@ def encrypted_size(orig_size):
     return (orig_size // AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE
 
 
+# Decrypts AES-256-CBC data with a zero IV piece by piece.
+# The last block is held back until finish() so the padding can be removed.
+class AesStreamDecryptor:
+    def __init__(self, key):
+        if len(key) != AES_KEY_SIZE:
+            raise CryptoError(f"AES key must be {AES_KEY_SIZE} bytes")
+        self._cipher = AES.new(key, AES.MODE_CBC, iv=ZERO_IV)
+        self._pending = b""
+        self._finished = False
+
+    def update(self, chunk):
+        if self._finished:
+            raise CryptoError("Decryptor already finished")
+        data = self._pending + chunk
+        ready = len(data) - len(data) % AES_BLOCK_SIZE
+        if ready == len(data):
+            ready = max(0, ready - AES_BLOCK_SIZE)
+        self._pending = data[ready:]
+        return self._cipher.decrypt(data[:ready])
+
+    def finish(self):
+        if self._finished:
+            raise CryptoError("Decryptor already finished")
+        self._finished = True
+        if len(self._pending) != AES_BLOCK_SIZE:
+            raise CryptoError("Encrypted size is not a multiple of 16")
+        try:
+            return unpad(self._cipher.decrypt(self._pending), AES_BLOCK_SIZE)
+        except ValueError:
+            raise CryptoError("Bad padding, wrong key?") from None
+
+
 # Decrypts src_path into dst_path chunk by chunk.
 # on_chunk is called with every decrypted chunk. Returns the plain size.
 def decrypt_file_streaming(key, src_path, dst_path, on_chunk=None):
-    src_size = Path(src_path).stat().st_size
-    if src_size == 0 or src_size % AES_BLOCK_SIZE:
-        raise CryptoError(f"Bad encrypted file size {src_size}")
-
-    cipher = AES.new(key, AES.MODE_CBC, iv=ZERO_IV)
+    decryptor = AesStreamDecryptor(key)
     written = 0
     try:
         with open(src_path, "rb") as src, open(dst_path, "wb") as dst:
-            pending = b""
             while chunk := src.read(DECRYPT_CHUNK_SIZE):
-                if pending:
-                    written += _write(dst, pending, on_chunk)
-                pending = cipher.decrypt(chunk)
-            try:
-                last = unpad(pending, AES_BLOCK_SIZE)
-            except ValueError:
-                raise CryptoError("Bad padding, wrong key?") from None
-            written += _write(dst, last, on_chunk)
+                written += _write(dst, decryptor.update(chunk), on_chunk)
+            written += _write(dst, decryptor.finish(), on_chunk)
     except BaseException:
         Path(dst_path).unlink(missing_ok=True)
         raise
@@ -64,7 +85,8 @@ def decrypt_file_streaming(key, src_path, dst_path, on_chunk=None):
 
 
 def _write(dst, data, on_chunk):
-    dst.write(data)
-    if on_chunk:
-        on_chunk(data)
+    if data:
+        dst.write(data)
+        if on_chunk:
+            on_chunk(data)
     return len(data)

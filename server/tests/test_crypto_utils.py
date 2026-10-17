@@ -67,6 +67,66 @@ class EncryptedSizeTest(unittest.TestCase):
         self.assertEqual(crypto_utils.encrypted_size(100_000), 100_016)
 
 
+class AesStreamDecryptorTest(unittest.TestCase):
+    def setUp(self):
+        self.key = crypto_utils.generate_aes_key()
+
+    def decrypt_in_pieces(self, encrypted, piece_sizes):
+        decryptor = crypto_utils.AesStreamDecryptor(self.key)
+        result = b""
+        pos = 0
+        i = 0
+        while pos < len(encrypted):
+            size = piece_sizes[i % len(piece_sizes)]
+            result += decryptor.update(encrypted[pos:pos + size])
+            pos += size
+            i += 1
+        return result + decryptor.finish()
+
+    def test_any_piece_sizes(self):
+        plain = os.urandom(10_000)
+        encrypted = aes_encrypt(self.key, plain)
+        for pieces in ([1], [7], [16], [17], [3, 50, 1, 200], [65536]):
+            with self.subTest(pieces=pieces):
+                self.assertEqual(
+                    self.decrypt_in_pieces(encrypted, pieces), plain
+                )
+
+    def test_empty_plaintext(self):
+        encrypted = aes_encrypt(self.key, b"")
+        self.assertEqual(self.decrypt_in_pieces(encrypted, [16]), b"")
+
+    def test_holds_back_last_block(self):
+        decryptor = crypto_utils.AesStreamDecryptor(self.key)
+        encrypted = aes_encrypt(self.key, b"a" * 40)
+        self.assertEqual(len(decryptor.update(encrypted)), 32)
+        self.assertEqual(decryptor.finish(), b"a" * 8)
+
+    def test_no_data(self):
+        decryptor = crypto_utils.AesStreamDecryptor(self.key)
+        with self.assertRaises(CryptoError):
+            decryptor.finish()
+
+    def test_incomplete_block(self):
+        decryptor = crypto_utils.AesStreamDecryptor(self.key)
+        decryptor.update(aes_encrypt(self.key, b"abc")[:15])
+        with self.assertRaises(CryptoError):
+            decryptor.finish()
+
+    def test_bad_key_size(self):
+        with self.assertRaises(CryptoError):
+            crypto_utils.AesStreamDecryptor(b"short")
+
+    def test_use_after_finish(self):
+        decryptor = crypto_utils.AesStreamDecryptor(self.key)
+        decryptor.update(aes_encrypt(self.key, b"abc"))
+        decryptor.finish()
+        with self.assertRaises(CryptoError):
+            decryptor.update(b"x" * 16)
+        with self.assertRaises(CryptoError):
+            decryptor.finish()
+
+
 class StreamingDecryptTest(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()

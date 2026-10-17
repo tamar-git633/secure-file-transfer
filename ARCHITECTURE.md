@@ -189,7 +189,8 @@ Client                                  Server
 ### `crypto_utils.py`
 - `generate_aes_key() -> bytes` (32 בתים, `get_random_bytes`).
 - `encrypt_with_public_key(der, data) -> bytes`.
-- `decrypt_file_streaming(key, src_path, dst_path, on_chunk) -> int` – מפענח בבלוקים (אובייקט `AES` אחד לכל הקובץ, כך ששרשור ה-CBC נשמר), מסיר padding רק מהבלוק האחרון, וקורא ל-`on_chunk` על כל קטע plaintext (לחישוב cksum במקביל). מחזיר את גודל הקובץ המפוענח.
+- מחלקה `AesStreamDecryptor(key)` – פענוח AES-256-CBC עם IV מאופס חלק אחרי חלק: `update(chunk)` מחזיר את מה שכבר אפשר לפענח (הבלוק האחרון מוחזק בצד), `finish()` מפענח את הבלוק האחרון ומסיר padding. מקבלת חלקים בכל גודל.
+- `decrypt_file_streaming(key, src_path, dst_path, on_chunk) -> int` – פענוח קובץ שלם בעזרת `AesStreamDecryptor`, וקורא ל-`on_chunk` על כל קטע plaintext (לחישוב cksum במקביל).
 
 ### `cksum.py`
 - מחלקה `Cksum` עם `update(chunk)` ו-`digest()` – חישוב מצטבר (האורך הכולל מתווסף רק ב-`digest()`), מבוסס על הקוד מיחידה 7.
@@ -253,9 +254,9 @@ TotalPackets = ⌈ContentSize / PACKET_CONTENT_SIZE⌉
 `PACKET_CONTENT_SIZE` = **64KB**. כל חבילה = בקשת 828 נפרדת עם אותם ContentSize / OrigFileSize / TotalPackets / FileName.
 
 ### שרת
-1. **חבילה 1:** מאמת שם קובץ (סעיף 8), בודק ש-`ContentSize == (⌊OrigSize/16⌋+1)×16`, ש-ContentSize ≤ `MAX_FILE_SIZE`, ש-TotalPackets תואם; פותח **קובץ זמני** (`<name>.tmp`) בתיקיית הלקוח.
-2. **כל חבילה:** בודק ש-PacketNumber = הצפוי, ששאר שדות הכותרת זהים לחבילה 1, ושסך הבתים לא חורג מ-ContentSize. קורא את התוכן מה-socket בקטעים וכותב **ישירות לקובץ הזמני**.
-3. **חבילה אחרונה:** בודק שסך הבתים = ContentSize, ואז `decrypt_file_streaming` מפענח בבלוקים מהקובץ הזמני לקובץ הסופי, ומחשב cksum במקביל. בודק שהגודל המפוענח = OrigFileSize. מוחק את הקובץ הזמני, רושם `FileRecord(verified=False)` ושולח 1603.
+1. **חבילה 1:** מאמת שם קובץ (סעיף 8), בודק ש-`ContentSize == (⌊OrigSize/16⌋+1)×16`, ש-ContentSize ≤ `MAX_FILE_SIZE`, ש-TotalPackets תואם; יוצר `AesStreamDecryptor` ו-`Cksum`, ופותח **קובץ זמני** (`<name>.tmp`) בתיקיית הלקוח.
+2. **כל חבילה:** בודק ש-PacketNumber = הצפוי, ששאר שדות הכותרת זהים לחבילה 1, ושסך הבתים לא חורג מ-ContentSize. קורא את התוכן מה-socket בקטעים, **מפענח כל קטע מיד** (`update`), מעדכן cksum וכותב את ה-plaintext לקובץ הזמני.
+3. **חבילה אחרונה:** בודק שסך הבתים = ContentSize, קורא ל-`finish()` (הבלוק האחרון + הסרת padding), בודק שהגודל המפוענח = OrigFileSize, משנה את שם הקובץ הזמני לשם הסופי, רושם `FileRecord(verified=False)` ושולח 1603.
 4. תשובה נשלחת **רק** אחרי החבילה האחרונה.
 5. כל כישלון באמצע (חבילה לא עקבית, פענוח נכשל, ניתוק, timeout) → מחיקת הקובץ הזמני והסופי → 1607 (או סגירת חיבור).
 
