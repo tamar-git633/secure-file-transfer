@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.ruff_cache/
+
+# Server runtime data
+server/received_files/
+server/defensive.db
+
+# Visual Studio
+.vs/
+x64/
+Debug/
+Release/
+*.user
+*.obj
+*.pdb
+*.ilk
+*.exe
+
+# Client runtime data (contains private keys!)
+me.info
+priv.key
