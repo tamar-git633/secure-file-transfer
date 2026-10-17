@@ -60,7 +60,7 @@ class SessionBasicsTest(ServerTestCase):
 
     def test_unread_payload_is_skipped(self):
         with self.connect() as client:
-            self.assertEqual(client.request(999, b"x" * 100_000)[1],
+            self.assertEqual(client.request(999, b"x" * 60_000)[1],
                              GENERAL_ERROR)
             self.assertEqual(client.request(999)[1], GENERAL_ERROR)
 

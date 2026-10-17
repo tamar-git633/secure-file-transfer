@@ -23,6 +23,7 @@ from storage import StorageError
 
 INACTIVITY_TIMEOUT = 300
 RECV_CHUNK_SIZE = 64 * 1024
+MAX_SKIP_SIZE = 64 * 1024
 
 logger = logging.getLogger(__name__)
 
@@ -94,12 +95,23 @@ class ClientSession:
             logger.exception("Unexpected error in request %d", header.code)
             response = (ResponseCode.GENERAL_ERROR, b"")
 
-        self._skip_unread()
+        keep_open = True
+        too_much_left = (header.code != RequestCode.SEND_FILE
+                         and self._unread > MAX_SKIP_SIZE)
+        if too_much_left:
+            logger.warning("Request %d declared %d bytes, closing connection",
+                           header.code, header.payload_size)
+            keep_open = False
+        else:
+            self._skip_unread()
+
         if response is not None:
-            code, payload = response
-            self._sock.sendall(build_response(code, payload))
-            logger.info("Sent response %d to %s", code, self._address)
-        return True
+            self._send(*response)
+        return keep_open
+
+    def _send(self, code, payload):
+        self._sock.sendall(build_response(code, payload))
+        logger.info("Sent response %d to %s", code, self._address)
 
     def _dispatch(self, header):
         handler = self._handlers.get(header.code)
