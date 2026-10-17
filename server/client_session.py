@@ -1,0 +1,117 @@
+import logging
+
+from crypto_utils import CryptoError
+from protocol import (
+    CLIENT_VERSION,
+    REQUEST_HEADER,
+    ProtocolError,
+    ResponseCode,
+    build_response,
+    parse_request_header,
+    validate_payload_size,
+)
+from storage import StorageError
+
+INACTIVITY_TIMEOUT = 300
+RECV_CHUNK_SIZE = 64 * 1024
+
+logger = logging.getLogger(__name__)
+
+
+class ConnectionClosedError(Exception):
+    pass
+
+
+# Handles one connected client: reads requests in a loop, dispatches them
+# by request code and sends back the response. Runs in its own thread.
+class ClientSession:
+    def __init__(self, sock, address, store):
+        self._sock = sock
+        self._address = f"{address[0]}:{address[1]}"
+        self._store = store
+        self._unread = 0
+        self._handlers = {}
+
+    def run(self):
+        logger.info("Client connected from %s", self._address)
+        try:
+            self._sock.settimeout(INACTIVITY_TIMEOUT)
+            while self._handle_request():
+                pass
+        except TimeoutError:
+            logger.warning("Client %s inactive for %d seconds, closing",
+                           self._address, INACTIVITY_TIMEOUT)
+        except ConnectionClosedError:
+            logger.warning("Client %s disconnected in the middle of a "
+                           "request", self._address)
+        except OSError as e:
+            logger.warning("Connection error with %s: %s", self._address, e)
+        finally:
+            self._close()
+
+    def _handle_request(self):
+        try:
+            raw_header = self._recv_exact(REQUEST_HEADER.size)
+        except ConnectionClosedError:
+            logger.info("Client %s disconnected", self._address)
+            return False
+
+        header = parse_request_header(raw_header)
+        self._unread = header.payload_size
+        logger.info("Request %d from %s, payload %d bytes",
+                    header.code, self._address, header.payload_size)
+        if header.version != CLIENT_VERSION:
+            logger.warning("Client version is %d, expected %d",
+                           header.version, CLIENT_VERSION)
+
+        try:
+            response = self._dispatch(header)
+        except (ProtocolError, StorageError, CryptoError) as e:
+            logger.error("Request %d failed: %s", header.code, e)
+            response = (ResponseCode.GENERAL_ERROR, b"")
+        except Exception:
+            logger.exception("Unexpected error in request %d", header.code)
+            response = (ResponseCode.GENERAL_ERROR, b"")
+
+        self._skip_unread()
+        if response is not None:
+            code, payload = response
+            self._sock.sendall(build_response(code, payload))
+            logger.info("Sent response %d to %s", code, self._address)
+        return True
+
+    def _dispatch(self, header):
+        handler = self._handlers.get(header.code)
+        if handler is None:
+            raise ProtocolError(f"Unsupported request code {header.code}")
+        validate_payload_size(header.code, header.payload_size)
+        return handler(header)
+
+    def _read_payload(self, size):
+        if size > self._unread:
+            raise ProtocolError("Read past the end of the payload")
+        data = self._recv_exact(size)
+        self._unread -= size
+        return data
+
+    def _skip_unread(self):
+        while self._unread:
+            size = min(self._unread, RECV_CHUNK_SIZE)
+            self._recv_exact(size)
+            self._unread -= size
+
+    def _recv_exact(self, size):
+        buffer = bytearray()
+        while len(buffer) < size:
+            chunk = self._sock.recv(min(size - len(buffer), RECV_CHUNK_SIZE))
+            if not chunk:
+                raise ConnectionClosedError()
+            buffer += chunk
+        return bytes(buffer)
+
+    def _close(self):
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+        logger.info("Session with %s closed", self._address)
