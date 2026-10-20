@@ -21,3 +21,7 @@ Release/
 # Client runtime data (contains private keys!)
 me.info
 priv.key
+
+# Client build output
+client/**/bin/
+client/**/obj/
