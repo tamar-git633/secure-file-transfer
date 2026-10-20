@@ -8,7 +8,9 @@
 #include "AESWrapper.h"
 #include "Base64Wrapper.h"
 #include "Cksum.h"
+#include "Connection.h"
 #include "Constants.h"
+#include "Endian.h"
 #include "RSAWrapper.h"
 
 namespace fs = std::filesystem;
@@ -71,8 +73,25 @@ static int encryptFile(const fs::path& dir)
     return 0;
 }
 
+static int ping(const std::string& portText)
+{
+    Connection connection("127.0.0.1", static_cast<uint16_t>(std::stoi(portText)));
+    std::vector<uint8_t> request(constants::CLIENT_ID_SIZE, 0);
+    request.push_back(constants::CLIENT_VERSION);
+    endian::appendLE16(request, 999);
+    endian::appendLE32(request, 0);
+    connection.sendAll(request);
+    const auto header = connection.recvExact(constants::RESPONSE_HEADER_SIZE);
+    std::cout << "C++: sent request 999, server version " << static_cast<int>(header[0]) << ", response code "
+              << endian::readLE16(header, 1) << ", payload " << endian::readLE32(header, 3) << " bytes" << std::endl;
+    return 0;
+}
+
 int runInteropTool(const std::string& command, const fs::path& dir)
 {
+    if (command == "ping") {
+        return ping(dir.string());
+    }
     if (command == "keygen") {
         return keygen(dir);
     }
