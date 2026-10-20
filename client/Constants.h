@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -38,6 +39,8 @@ inline constexpr char ME_FILE[] = "me.info";
 inline constexpr char PRIVATE_KEY_FILE[] = "priv.key";
 
 }
+
+using ClientId = std::array<uint8_t, constants::CLIENT_ID_SIZE>;
 
 enum class RequestCode : uint16_t {
     Register = 825,
