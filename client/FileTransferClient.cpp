@@ -11,10 +11,10 @@ FileTransferClient::FileTransferClient(const std::filesystem::path& workDir)
 {
 }
 
-void FileTransferClient::run()
+bool FileTransferClient::run()
 {
     connectAndGetKey();
-    sendFiles();
+    return sendFiles();
 }
 
 void FileTransferClient::connectAndGetKey()
@@ -28,31 +28,78 @@ void FileTransferClient::connectAndGetKey()
     sendPublicKey();
 }
 
-void FileTransferClient::sendFiles()
+// Sends every file from transfer.json. Returns true only if all of them
+// were sent and verified.
+bool FileTransferClient::sendFiles()
 {
+    int verified = 0;
+    int failed = 0;
+    int skipped = 0;
     for (const auto& path : m_config.files()) {
         if (!std::filesystem::is_regular_file(path)) {
             std::cout << "Skipping " << path.string() << ": file not found" << std::endl;
-            continue;
+            ++skipped;
+        } else if (sendOneFile(path)) {
+            ++verified;
+        } else {
+            ++failed;
         }
-        sendOneFile(path);
+    }
+    std::cout << "Done: " << verified << " verified, " << failed << " failed, " << skipped << " skipped" << std::endl;
+    return failed == 0 && skipped == 0;
+}
+
+// Sends a file and compares the CRC. On a mismatch the client sends 901
+// and the file again, after the fourth mismatch it gives up with 902.
+bool FileTransferClient::sendOneFile(const std::filesystem::path& path)
+{
+    const std::string fileName = FileSender::protocolFileName(path);
+    const auto namePayload = Protocol::namePayload(fileName);
+    std::cout << "Sending " << path.string() << " (" << std::filesystem::file_size(path) << " bytes)" << std::endl;
+
+    for (int sendCount = 1;; ++sendCount) {
+        const UploadResult result = uploadFile(path);
+        if (result.serverCksum == result.ourCksum) {
+            std::cout << "CRC OK (" << result.ourCksum << "), sending confirmation" << std::endl;
+            exchange(RequestCode::CrcOk, namePayload, {ResponseCode::Ack});
+            std::cout << "Server confirmed '" << fileName << "'" << std::endl;
+            return true;
+        }
+        std::cout << "CRC mismatch: server " << result.serverCksum << ", ours " << result.ourCksum << std::endl;
+        if (sendCount > constants::MAX_CRC_RESENDS) {
+            exchange(RequestCode::CrcAbort, namePayload, {ResponseCode::Ack});
+            std::cout << "CRC failed " << sendCount << " times, giving up on '" << fileName << "'" << std::endl;
+            return false;
+        }
+        m_connection->sendAll(Protocol::request(m_identity.id, RequestCode::CrcRetry, namePayload));
+        std::cout << "Sending the file again (" << sendCount << "/" << constants::MAX_CRC_RESENDS << ")" << std::endl;
     }
 }
 
-// Sends one file and reads the server's 1603 answer with its cksum
-void FileTransferClient::sendOneFile(const std::filesystem::path& path)
+// Sends the file packets and reads the 1603 answer. If the server answers
+// with an error the file is sent again, up to 3 times.
+FileTransferClient::UploadResult FileTransferClient::uploadFile(const std::filesystem::path& path)
 {
-    std::cout << "Sending " << path.string() << " (" << std::filesystem::file_size(path) << " bytes)" << std::endl;
-    FileSender sender(*m_connection, m_identity.id, m_aesKey);
-    const SentFile sent = sender.send(path);
-    const Response response = Protocol::readResponse(*m_connection);
-    if (response.code != static_cast<uint16_t>(ResponseCode::FileReceived)) {
-        throw ServerError("Server answered " + std::to_string(response.code) + " to file " + sent.fileName);
+    for (int attempt = 1; attempt <= constants::MAX_ATTEMPTS; ++attempt) {
+        FileSender sender(*m_connection, m_identity.id, m_aesKey);
+        const SentFile sent = sender.send(path);
+        const Response response = Protocol::readResponse(*m_connection);
+        if (response.code == static_cast<uint16_t>(ResponseCode::FileReceived)) {
+            const FileReceivedPayload received = Protocol::parseFileReceived(response.payload);
+            checkClientId(received.clientId);
+            if (received.fileName != sent.fileName || received.contentSize != sent.contentSize) {
+                throw ProtocolError("Server confirmed a different file");
+            }
+            std::cout << "Server got '" << received.fileName << "', " << received.contentSize << " bytes" << std::endl;
+            return {received.cksum, sent.cksum};
+        }
+        std::cout << "server responded with an error" << std::endl;
+        if (attempt < constants::MAX_ATTEMPTS) {
+            std::cout << "Trying again (" << attempt + 1 << "/" << constants::MAX_ATTEMPTS << ")" << std::endl;
+        }
     }
-    const FileReceivedPayload received = Protocol::parseFileReceived(response.payload);
-    checkClientId(received.clientId);
-    std::cout << "Server got '" << received.fileName << "', " << received.contentSize << " bytes, cksum "
-              << received.cksum << " (ours " << sent.cksum << ")" << std::endl;
+    throw ServerError("Sending file " + path.filename().string() + " failed " +
+                      std::to_string(constants::MAX_ATTEMPTS) + " times");
 }
 
 // Request 827, used when me.info exists. The saved RSA key is reused.

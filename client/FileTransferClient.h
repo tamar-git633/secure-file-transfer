@@ -17,15 +17,21 @@
 class FileTransferClient {
 public:
     explicit FileTransferClient(const std::filesystem::path& workDir);
-    void run();
+    bool run();
 
 private:
+    struct UploadResult {
+        uint32_t serverCksum = 0;
+        uint32_t ourCksum = 0;
+    };
+
     void registerNew();
     void sendPublicKey();
     bool reconnect();
     void connectAndGetKey();
-    void sendFiles();
-    void sendOneFile(const std::filesystem::path& path);
+    bool sendFiles();
+    bool sendOneFile(const std::filesystem::path& path);
+    UploadResult uploadFile(const std::filesystem::path& path);
     void takeAesKey(const Response& response);
 
     Response exchange(RequestCode code, std::span<const uint8_t> payload, std::initializer_list<ResponseCode> expected);

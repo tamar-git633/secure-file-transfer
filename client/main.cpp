@@ -39,10 +39,9 @@ int main()
     std::cout << "File transfer client, version " << static_cast<int>(constants::CLIENT_VERSION) << std::endl;
     try {
         FileTransferClient client(executableDirectory());
-        client.run();
+        return client.run() ? 0 : 1;
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << std::endl;
         return 1;
     }
-    return 0;
 }
