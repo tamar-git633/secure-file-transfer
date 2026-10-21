@@ -17,11 +17,18 @@ bool FileTransferClient::run()
     return sendFiles();
 }
 
+// me.info is read before connecting, so a broken file is reported
+// right away even when the server is down
 void FileTransferClient::connectAndGetKey()
 {
+    const bool registeredBefore = m_info.exists();
+    if (registeredBefore) {
+        m_identity = m_info.load();
+        m_rsa = std::make_unique<RSAPrivateWrapper>(m_identity.privateKeyDer);
+    }
     std::cout << "Connecting to " << m_config.host() << ":" << m_config.port() << std::endl;
     m_connection = std::make_unique<Connection>(m_config.host(), m_config.port());
-    if (m_info.exists() && reconnect()) {
+    if (registeredBefore && reconnect()) {
         return;
     }
     registerNew();
@@ -106,8 +113,6 @@ FileTransferClient::UploadResult FileTransferClient::uploadFile(const std::files
 // Returns false if the server does not know us (1606).
 bool FileTransferClient::reconnect()
 {
-    m_identity = m_info.load();
-    m_rsa = std::make_unique<RSAPrivateWrapper>(m_identity.privateKeyDer);
     std::cout << "Found " << constants::ME_FILE << ", reconnecting as '" << m_identity.name << "' (ID "
               << ClientInfo::idToHex(m_identity.id) << ")" << std::endl;
 

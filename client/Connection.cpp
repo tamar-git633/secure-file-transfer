@@ -13,7 +13,14 @@ constexpr size_t MAX_CHUNK = 64 * 1024;
 
 std::string socketError(const std::string& what)
 {
-    return what + " (error " + std::to_string(WSAGetLastError()) + ")";
+    const int error = WSAGetLastError();
+    if (error == WSAECONNRESET || error == WSAECONNABORTED) {
+        return what + ": the server closed the connection";
+    }
+    if (error == WSAETIMEDOUT) {
+        return what + ": the server did not answer in time";
+    }
+    return what + " (error " + std::to_string(error) + ")";
 }
 
 struct AddressList {
@@ -56,19 +63,24 @@ Connection::Connection(const std::string& host, uint16_t port, int timeoutMs)
         throw NetworkError(socketError("Cannot resolve server address " + host));
     }
 
+    int lastError = 0;
     for (const addrinfo* address = addresses.head; address != nullptr; address = address->ai_next) {
         m_socket = socket(address->ai_family, address->ai_socktype, address->ai_protocol);
         if (m_socket == INVALID_SOCKET) {
+            lastError = WSAGetLastError();
             continue;
         }
         if (connect(m_socket, address->ai_addr, static_cast<int>(address->ai_addrlen)) == 0) {
             break;
         }
+        lastError = WSAGetLastError();
         closesocket(m_socket);
         m_socket = INVALID_SOCKET;
     }
     if (m_socket == INVALID_SOCKET) {
-        throw NetworkError(socketError("Cannot connect to " + host + ":" + portText));
+        const std::string reason = lastError == WSAECONNREFUSED ? "the server is not running or the port is wrong"
+                                                                : "error " + std::to_string(lastError);
+        throw NetworkError("Cannot connect to " + host + ":" + portText + " (" + reason + ")");
     }
 
     const DWORD timeout = static_cast<DWORD>(timeoutMs);
@@ -110,9 +122,6 @@ std::vector<uint8_t> Connection::recvExact(size_t size)
             throw NetworkError("The server closed the connection");
         }
         if (result == SOCKET_ERROR) {
-            if (WSAGetLastError() == WSAETIMEDOUT) {
-                throw NetworkError("The server did not answer in time");
-            }
             throw NetworkError(socketError("Receiving from the server failed"));
         }
         received += static_cast<size_t>(result);

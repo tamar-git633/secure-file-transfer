@@ -88,6 +88,8 @@ class ClientSession:
 
         try:
             response = self._dispatch(header)
+        except (ConnectionClosedError, ConnectionError, TimeoutError):
+            raise
         except (ProtocolError, StorageError, CryptoError) as e:
             logger.error("Request %d failed: %s", header.code, e)
             response = (ResponseCode.GENERAL_ERROR, b"")
