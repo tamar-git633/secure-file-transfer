@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "Errors.h"
+#include "FileSender.h"
 
 FileTransferClient::FileTransferClient(const std::filesystem::path& workDir)
     : m_config(Config::load(workDir / constants::TRANSFER_FILE)), m_info(workDir)
@@ -12,6 +13,12 @@ FileTransferClient::FileTransferClient(const std::filesystem::path& workDir)
 
 void FileTransferClient::run()
 {
+    connectAndGetKey();
+    sendFiles();
+}
+
+void FileTransferClient::connectAndGetKey()
+{
     std::cout << "Connecting to " << m_config.host() << ":" << m_config.port() << std::endl;
     m_connection = std::make_unique<Connection>(m_config.host(), m_config.port());
     if (m_info.exists() && reconnect()) {
@@ -19,6 +26,33 @@ void FileTransferClient::run()
     }
     registerNew();
     sendPublicKey();
+}
+
+void FileTransferClient::sendFiles()
+{
+    for (const auto& path : m_config.files()) {
+        if (!std::filesystem::is_regular_file(path)) {
+            std::cout << "Skipping " << path.string() << ": file not found" << std::endl;
+            continue;
+        }
+        sendOneFile(path);
+    }
+}
+
+// Sends one file and reads the server's 1603 answer with its cksum
+void FileTransferClient::sendOneFile(const std::filesystem::path& path)
+{
+    std::cout << "Sending " << path.string() << " (" << std::filesystem::file_size(path) << " bytes)" << std::endl;
+    FileSender sender(*m_connection, m_identity.id, m_aesKey);
+    const SentFile sent = sender.send(path);
+    const Response response = Protocol::readResponse(*m_connection);
+    if (response.code != static_cast<uint16_t>(ResponseCode::FileReceived)) {
+        throw ServerError("Server answered " + std::to_string(response.code) + " to file " + sent.fileName);
+    }
+    const FileReceivedPayload received = Protocol::parseFileReceived(response.payload);
+    checkClientId(received.clientId);
+    std::cout << "Server got '" << received.fileName << "', " << received.contentSize << " bytes, cksum "
+              << received.cksum << " (ours " << sent.cksum << ")" << std::endl;
 }
 
 // Request 827, used when me.info exists. The saved RSA key is reused.

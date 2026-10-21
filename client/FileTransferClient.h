@@ -23,6 +23,9 @@ private:
     void registerNew();
     void sendPublicKey();
     bool reconnect();
+    void connectAndGetKey();
+    void sendFiles();
+    void sendOneFile(const std::filesystem::path& path);
     void takeAesKey(const Response& response);
 
     Response exchange(RequestCode code, std::span<const uint8_t> payload, std::initializer_list<ResponseCode> expected);
