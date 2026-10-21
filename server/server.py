@@ -40,6 +40,7 @@ class Server:
         self._stopped.set()
 
 
+# Reads the port, starts listening and serves clients until stopped
 def main():
     logging.basicConfig(
         level=logging.INFO,

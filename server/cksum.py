@@ -4,11 +4,12 @@ CRC_TOP_BIT = 0x80000000
 BYTE_MASK = 0xFF
 BITS_IN_BYTE = 8
 TOP_BYTE_SHIFT = 24
+TABLE_SIZE = 256
 
 
 def _build_table():
     table = []
-    for i in range(256):
+    for i in range(TABLE_SIZE):
         crc = i << TOP_BYTE_SHIFT
         for _ in range(BITS_IN_BYTE):
             if crc & CRC_TOP_BIT:

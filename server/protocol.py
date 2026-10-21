@@ -12,6 +12,7 @@ AES_KEY_SIZE = 32
 NULL_BYTE = b"\x00"
 
 
+# Request codes sent by the client
 class RequestCode(IntEnum):
     REGISTER = 825
     SEND_PUBLIC_KEY = 826
@@ -22,6 +23,7 @@ class RequestCode(IntEnum):
     CRC_ABORT = 902
 
 
+# Response codes sent by the server
 class ResponseCode(IntEnum):
     REGISTER_OK = 1600
     REGISTER_FAILED = 1601
@@ -157,6 +159,7 @@ def build_aes_key_payload(client_id, encrypted_aes_key):
     return build_client_id_payload(client_id) + encrypted_aes_key
 
 
+# Payload of response 1603: client ID, content size, file name, cksum
 def build_file_received_payload(client_id, content_size, file_name, cksum):
     return FILE_RECEIVED_PAYLOAD.pack(
         build_client_id_payload(client_id),

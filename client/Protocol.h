@@ -10,6 +10,7 @@
 
 class Connection;
 
+// A response from the server: header fields and the raw payload
 struct Response {
     uint8_t version = 0;
     uint16_t code = 0;
@@ -28,6 +29,7 @@ struct FileReceivedPayload {
     uint32_t cksum = 0;
 };
 
+// The fixed fields at the start of every 828 packet
 struct FilePacketInfo {
     uint32_t contentSize = 0;
     uint32_t origSize = 0;

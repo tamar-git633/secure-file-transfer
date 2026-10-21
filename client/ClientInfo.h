@@ -8,6 +8,7 @@
 
 #include "Constants.h"
 
+// What the client keeps in me.info: name, ID from the server, private key
 struct ClientIdentity {
     std::string name;
     ClientId id{};

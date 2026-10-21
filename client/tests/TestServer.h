@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <thread>
@@ -54,6 +56,7 @@ public:
         m_port = ntohs(address.sin_port);
         m_thread = std::thread([this, handler] {
             const SOCKET client = accept(m_listener, nullptr, nullptr);
+            m_accepted = true;
             if (client != INVALID_SOCKET) {
                 handler(client);
                 closesocket(client);
@@ -63,6 +66,10 @@ public:
 
     ~TestServer()
     {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!m_accepted && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
         closesocket(m_listener);
         m_thread.join();
     }
@@ -76,5 +83,6 @@ private:
     WinsockSession m_winsock;
     SOCKET m_listener = INVALID_SOCKET;
     uint16_t m_port = 0;
+    std::atomic<bool> m_accepted = false;
     std::thread m_thread;
 };

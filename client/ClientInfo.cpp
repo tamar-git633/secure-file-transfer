@@ -11,6 +11,9 @@
 namespace {
 
 constexpr uintmax_t MAX_INFO_FILE_SIZE = 64 * 1024;
+constexpr size_t NAME_LINE = 0;
+constexpr size_t ID_LINE = 1;
+constexpr size_t KEY_LINE = 2;
 constexpr unsigned int HEX_BASE = 16;
 constexpr size_t HEX_CHARS_PER_BYTE = 2;
 constexpr char HEX_DIGITS[] = "0123456789abcdef";
@@ -100,23 +103,23 @@ bool ClientInfo::exists() const
 ClientIdentity ClientInfo::load() const
 {
     const auto lines = splitLines(readSmallFile(m_meFile));
-    if (lines.size() < 2) {
+    if (lines.size() <= ID_LINE) {
         throw ConfigError("me.info must have the name and the client ID");
     }
 
     ClientIdentity identity;
-    identity.name = lines[0];
+    identity.name = lines[NAME_LINE];
     checkName(identity.name);
-    identity.id = idFromHex(lines[1]);
+    identity.id = idFromHex(lines[ID_LINE]);
 
     std::string keyText;
     if (std::filesystem::is_regular_file(m_keyFile)) {
         const auto keyLines = splitLines(readSmallFile(m_keyFile));
         if (!keyLines.empty()) {
-            keyText = keyLines[0];
+            keyText = keyLines.front();
         }
-    } else if (lines.size() >= 3) {
-        keyText = lines[2];
+    } else if (lines.size() > KEY_LINE) {
+        keyText = lines[KEY_LINE];
     }
     if (keyText.empty()) {
         throw ConfigError("Private key not found in priv.key or me.info");

@@ -11,6 +11,7 @@
 
 class Connection;
 
+// Result of sending a file: the name used, encrypted size and our cksum
 struct SentFile {
     std::string fileName;
     uint32_t contentSize = 0;
