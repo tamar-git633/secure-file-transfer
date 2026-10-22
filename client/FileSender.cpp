@@ -7,6 +7,7 @@
 #include "Cksum.h"
 #include "Connection.h"
 #include "Errors.h"
+#include "TextUtils.h"
 
 namespace {
 
@@ -26,11 +27,11 @@ std::string FileSender::protocolFileName(const std::filesystem::path& path)
     const std::u8string utf8 = path.filename().u8string();
     std::string name(utf8.begin(), utf8.end());
     if (name.empty() || name.size() >= constants::NAME_SIZE) {
-        throw ProtocolError("File name must be 1 to 254 characters");
+        throw FileError("File name must be 1 to 254 characters");
     }
     for (char c : name) {
         if (c < FIRST_PRINTABLE || c > LAST_PRINTABLE) {
-            throw ProtocolError("File name '" + path.filename().string() + "' must be in English letters");
+            throw FileError("File name '" + text::pathToUtf8(path.filename()) + "' must be in English letters");
         }
     }
     return name;
@@ -41,7 +42,7 @@ uint32_t FileSender::checkedContentSize(uint64_t origSize)
 {
     const uint64_t contentSize = AesStreamEncryptor::encryptedSize(origSize);
     if (contentSize > UINT32_MAX) {
-        throw ProtocolError("File is too large for the protocol (max 4GB)");
+        throw FileError("File is too large for the protocol (max 4GB)");
     }
     return static_cast<uint32_t>(contentSize);
 }
@@ -51,7 +52,7 @@ uint16_t FileSender::packetCount(uint32_t contentSize)
     const uint64_t count = (static_cast<uint64_t>(contentSize) + constants::PACKET_CONTENT_SIZE - 1) /
                            constants::PACKET_CONTENT_SIZE;
     if (count == 0 || count > constants::MAX_PACKETS) {
-        throw ProtocolError("File needs too many packets");
+        throw FileError("File is too large for the protocol (too many packets)");
     }
     return static_cast<uint16_t>(count);
 }
@@ -64,11 +65,11 @@ SentFile FileSender::send(const std::filesystem::path& path)
     std::error_code error;
     const uint64_t origSize = std::filesystem::file_size(path, error);
     if (error) {
-        throw ClientError("Cannot read file " + path.string());
+        throw FileError("Cannot read the file");
     }
     std::ifstream in(path, std::ios::binary);
     if (!in) {
-        throw ClientError("Cannot open file " + path.string());
+        throw FileError("Cannot open the file, it may be in use by another program");
     }
 
     FilePacketInfo info;
@@ -102,7 +103,7 @@ SentFile FileSender::send(const std::filesystem::path& path)
         in.read(reinterpret_cast<char*>(readBuffer.data()), static_cast<std::streamsize>(readBuffer.size()));
         const auto count = static_cast<size_t>(in.gcount());
         if (count == 0) {
-            throw ClientError("File " + path.string() + " changed while sending");
+            throw ClientError("File " + text::pathToUtf8(path) + " changed while sending");
         }
         readBytes += count;
         const std::span<const uint8_t> piece(readBuffer.data(), count);

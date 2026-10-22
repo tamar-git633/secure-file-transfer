@@ -1,5 +1,6 @@
 import logging
 import socket
+import sys
 import threading
 
 from client_session import ClientSession
@@ -52,12 +53,13 @@ def main():
         server = Server(port, ClientStore())
     except OSError as e:
         logger.error("Cannot listen on port %d: %s", port, e)
-        return
+        return 1
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

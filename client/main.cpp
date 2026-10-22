@@ -36,6 +36,7 @@ std::filesystem::path executableDirectory()
 
 int main()
 {
+    SetConsoleOutputCP(CP_UTF8);
     std::cout << "File transfer client, version " << static_cast<int>(constants::CLIENT_VERSION) << std::endl;
     try {
         FileTransferClient client(executableDirectory());

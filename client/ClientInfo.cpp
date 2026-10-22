@@ -7,6 +7,7 @@
 
 #include "Base64Wrapper.h"
 #include "Errors.h"
+#include "TextUtils.h"
 
 namespace {
 
@@ -27,16 +28,18 @@ std::string readSmallFile(const std::filesystem::path& path)
     std::error_code error;
     const auto size = std::filesystem::file_size(path, error);
     if (error) {
-        throw ConfigError("Cannot read " + path.string());
+        throw ConfigError("Cannot read " + text::pathToUtf8(path));
     }
     if (size > MAX_INFO_FILE_SIZE) {
-        throw ConfigError(path.string() + " is too large");
+        throw ConfigError(text::pathToUtf8(path) + " is too large");
     }
     std::ifstream in(path, std::ios::binary);
     if (!in) {
-        throw ConfigError("Cannot read " + path.string());
+        throw ConfigError("Cannot read " + text::pathToUtf8(path));
     }
-    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    std::string content{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    text::stripUtf8Bom(content);
+    return content;
 }
 
 std::vector<std::string> splitLines(const std::string& text)
@@ -63,14 +66,14 @@ void writeFile(const std::filesystem::path& path, const std::string& content)
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
         out << content;
         if (!out.flush()) {
-            throw ConfigError("Cannot write " + path.string());
+            throw ConfigError("Cannot write " + text::pathToUtf8(path));
         }
     }
     std::error_code error;
     std::filesystem::rename(temp, path, error);
     if (error) {
         std::filesystem::remove(temp, error);
-        throw ConfigError("Cannot write " + path.string());
+        throw ConfigError("Cannot write " + text::pathToUtf8(path));
     }
 }
 

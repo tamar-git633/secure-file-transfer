@@ -32,3 +32,10 @@ class ServerError : public ClientError {
 public:
     using ClientError::ClientError;
 };
+
+// A problem with one file to send (bad name, cannot open it, too large).
+// The client skips that file and goes on with the others.
+class FileError : public ClientError {
+public:
+    using ClientError::ClientError;
+};

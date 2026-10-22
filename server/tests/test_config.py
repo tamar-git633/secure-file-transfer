@@ -29,6 +29,10 @@ class ReadPortTest(unittest.TestCase):
         self.write(b"  8080\r\n")
         self.assertEqual(read_port(self.path), 8080)
 
+    def test_utf8_bom_is_ignored(self):
+        self.write(b"\xef\xbb\xbf1250\r\n")
+        self.assertEqual(read_port(self.path), 1250)
+
     def test_missing_file(self):
         self.assert_default_with_warning()
 

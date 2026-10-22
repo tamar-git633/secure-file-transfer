@@ -187,21 +187,21 @@ TEST(sender_sizes_and_limits)
 {
     CHECK(FileSender::checkedContentSize(100000) == 100016);
     CHECK(FileSender::checkedContentSize(4294967279ULL) == 4294967280u);
-    CHECK_THROWS(FileSender::checkedContentSize(4294967280ULL), ProtocolError);
+    CHECK_THROWS(FileSender::checkedContentSize(4294967280ULL), FileError);
     CHECK(FileSender::packetCount(16) == 1);
     CHECK(FileSender::packetCount(65536) == 1);
     CHECK(FileSender::packetCount(65537) == 2);
     CHECK(FileSender::packetCount(65535u * 65536u) == 65535);
-    CHECK_THROWS(FileSender::packetCount(65535u * 65536u + 1), ProtocolError);
-    CHECK_THROWS(FileSender::packetCount(4294967280u), ProtocolError);
+    CHECK_THROWS(FileSender::packetCount(65535u * 65536u + 1), FileError);
+    CHECK_THROWS(FileSender::packetCount(4294967280u), FileError);
 }
 
 TEST(sender_file_name_rules)
 {
     CHECK(FileSender::protocolFileName("c:\\docs\\report.pdf") == "report.pdf");
     CHECK(FileSender::protocolFileName("dir/sub/a.bin") == "a.bin");
-    CHECK_THROWS(FileSender::protocolFileName(fs::path(u8"c:/docs/\u05e7\u05d5\u05d1\u05e5.txt")), ProtocolError);
-    CHECK_THROWS(FileSender::protocolFileName("c:\\docs\\" + std::string(260, 'a')), ProtocolError);
+    CHECK_THROWS(FileSender::protocolFileName(fs::path(u8"c:/docs/\u05e7\u05d5\u05d1\u05e5.txt")), FileError);
+    CHECK_THROWS(FileSender::protocolFileName("c:\\docs\\" + std::string(260, 'a')), FileError);
 }
 
 TEST(sender_missing_file)
@@ -209,5 +209,5 @@ TEST(sender_missing_file)
     TestServer server([](SOCKET) {});
     Connection connection("127.0.0.1", server.port());
     FileSender sender(connection, testId(), testKey());
-    CHECK_THROWS(sender.send(fs::temp_directory_path() / "no_such_file_123.bin"), ClientError);
+    CHECK_THROWS(sender.send(fs::temp_directory_path() / "no_such_file_123.bin"), FileError);
 }

@@ -5,6 +5,7 @@
 
 #include "Errors.h"
 #include "FileSender.h"
+#include "TextUtils.h"
 
 FileTransferClient::FileTransferClient(const std::filesystem::path& workDir)
     : m_config(Config::load(workDir / constants::TRANSFER_FILE)), m_info(workDir)
@@ -23,8 +24,12 @@ void FileTransferClient::connectAndGetKey()
 {
     const bool registeredBefore = m_info.exists();
     if (registeredBefore) {
-        m_identity = m_info.load();
-        m_rsa = std::make_unique<RSAPrivateWrapper>(m_identity.privateKeyDer);
+        try {
+            m_identity = m_info.load();
+            m_rsa = std::make_unique<RSAPrivateWrapper>(m_identity.privateKeyDer);
+        } catch (const ClientError& e) {
+            throw ConfigError(std::string(e.what()) + ". Delete me.info and priv.key to register again");
+        }
     }
     std::cout << "Connecting to " << m_config.host() << ":" << m_config.port() << std::endl;
     m_connection = std::make_unique<Connection>(m_config.host(), m_config.port());
@@ -35,8 +40,8 @@ void FileTransferClient::connectAndGetKey()
     sendPublicKey();
 }
 
-// Sends every file from transfer.json. Returns true only if all of them
-// were sent and verified.
+// Sends every file from transfer.json. A file that cannot be sent (missing,
+// locked, bad name) is skipped. Returns true only if all files were verified.
 bool FileTransferClient::sendFiles()
 {
     int verified = 0;
@@ -44,12 +49,19 @@ bool FileTransferClient::sendFiles()
     int skipped = 0;
     for (const auto& path : m_config.files()) {
         if (!std::filesystem::is_regular_file(path)) {
-            std::cout << "Skipping " << path.string() << ": file not found" << std::endl;
+            std::cout << "Skipping " << text::pathToUtf8(path) << ": file not found" << std::endl;
             ++skipped;
-        } else if (sendOneFile(path)) {
-            ++verified;
-        } else {
-            ++failed;
+            continue;
+        }
+        try {
+            if (sendOneFile(path)) {
+                ++verified;
+            } else {
+                ++failed;
+            }
+        } catch (const FileError& e) {
+            std::cout << "Skipping " << text::pathToUtf8(path) << ": " << e.what() << std::endl;
+            ++skipped;
         }
     }
     std::cout << "Done: " << verified << " verified, " << failed << " failed, " << skipped << " skipped" << std::endl;
@@ -62,7 +74,13 @@ bool FileTransferClient::sendOneFile(const std::filesystem::path& path)
 {
     const std::string fileName = FileSender::protocolFileName(path);
     const auto namePayload = Protocol::namePayload(fileName);
-    std::cout << "Sending " << path.string() << " (" << std::filesystem::file_size(path) << " bytes)" << std::endl;
+    std::error_code sizeError;
+    const auto size = std::filesystem::file_size(path, sizeError);
+    std::cout << "Sending " << text::pathToUtf8(path);
+    if (!sizeError) {
+        std::cout << " (" << size << " bytes)";
+    }
+    std::cout << std::endl;
 
     for (int sendCount = 1;; ++sendCount) {
         const UploadResult result = uploadFile(path);
@@ -105,7 +123,7 @@ FileTransferClient::UploadResult FileTransferClient::uploadFile(const std::files
             std::cout << "Trying again (" << attempt + 1 << "/" << constants::MAX_ATTEMPTS << ")" << std::endl;
         }
     }
-    throw ServerError("Sending file " + path.filename().string() + " failed " +
+    throw ServerError("Sending file " + text::pathToUtf8(path.filename()) + " failed " +
                       std::to_string(constants::MAX_ATTEMPTS) + " times");
 }
 

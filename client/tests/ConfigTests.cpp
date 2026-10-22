@@ -127,3 +127,14 @@ TEST(config_load_from_file)
     std::filesystem::remove(path);
     CHECK_THROWS(Config::load(path), ConfigError);
 }
+
+TEST(config_load_with_utf8_bom)
+{
+    const auto path = std::filesystem::temp_directory_path() / "transfer_bom_test.json";
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << "\xEF\xBB\xBF" << VALID_JSON;
+    }
+    CHECK(Config::load(path).port() == 1265);
+    std::filesystem::remove(path);
+}

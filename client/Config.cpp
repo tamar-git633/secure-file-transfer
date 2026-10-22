@@ -8,6 +8,7 @@
 #include "Constants.h"
 #include "Errors.h"
 #include "JsonParser.h"
+#include "TextUtils.h"
 
 namespace {
 
@@ -53,17 +54,18 @@ Config Config::load(const std::filesystem::path& path)
     std::error_code error;
     const auto size = std::filesystem::file_size(path, error);
     if (error) {
-        throw ConfigError("Cannot open " + path.string());
+        throw ConfigError("Cannot open " + text::pathToUtf8(path));
     }
     if (size > MAX_CONFIG_FILE_SIZE) {
-        throw ConfigError(path.string() + " is too large");
+        throw ConfigError(text::pathToUtf8(path) + " is too large");
     }
     std::ifstream in(path, std::ios::binary);
     if (!in) {
-        throw ConfigError("Cannot open " + path.string());
+        throw ConfigError("Cannot open " + text::pathToUtf8(path));
     }
-    const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-    return parse(text);
+    std::string content{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    text::stripUtf8Bom(content);
+    return parse(content);
 }
 
 // Parses transfer.json text and checks every field

@@ -5,6 +5,7 @@ DEFAULT_PORT = 1369
 MIN_PORT = 1
 MAX_PORT = 65535
 MAX_PORT_FILE_SIZE = 16
+UTF8_BOM = b"\xef\xbb\xbf"
 PORT_FILE = Path(__file__).resolve().parent / "port.info"
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ def read_port(path=PORT_FILE):
     except OSError as e:
         return _use_default(f"Cannot read {path} ({e.strerror})")
 
+    raw = raw.removeprefix(UTF8_BOM)
     if len(raw) > MAX_PORT_FILE_SIZE:
         return _use_default(f"{path} is too large")
 

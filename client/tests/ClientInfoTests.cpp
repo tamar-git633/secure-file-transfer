@@ -151,3 +151,15 @@ TEST(info_save_rejects_bad_name)
     CHECK_THROWS(ClientInfo(dir.path()).save(identity), ConfigError);
     CHECK(!fs::exists(dir.path() / "me.info"));
 }
+
+TEST(info_utf8_bom_in_files)
+{
+    TempDir dir;
+    const ClientIdentity identity = sampleIdentity();
+    const std::string key = Base64Wrapper::encode(identity.privateKeyDer);
+    writeText(dir.path() / "me.info", "\xEF\xBB\xBFMichael Jackson\n64f3f63985f04beb81a0e43321880182\n" + key + "\n");
+    writeText(dir.path() / "priv.key", "\xEF\xBB\xBF" + key + "\n");
+    const ClientIdentity loaded = ClientInfo(dir.path()).load();
+    CHECK(loaded.name == "Michael Jackson");
+    CHECK(loaded.privateKeyDer == identity.privateKeyDer);
+}
