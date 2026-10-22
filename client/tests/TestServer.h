@@ -7,8 +7,7 @@
 #include <thread>
 #include <vector>
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include "Platform.h"
 
 #include "Connection.h"
 

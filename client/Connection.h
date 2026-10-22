@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include <winsock2.h>
+#include "Platform.h"
 
 #include "Constants.h"
 

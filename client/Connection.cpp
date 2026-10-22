@@ -2,8 +2,6 @@
 
 #include <algorithm>
 
-#include <ws2tcpip.h>
-
 #include "Errors.h"
 
 namespace {

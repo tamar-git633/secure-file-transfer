@@ -3,7 +3,7 @@
 #include <iostream>
 #include <string>
 
-#include <windows.h>
+#include "Platform.h"
 
 #include "Constants.h"
 #include "Errors.h"
