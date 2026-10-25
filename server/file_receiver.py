@@ -7,6 +7,8 @@ from crypto_utils import AesStreamDecryptor, encrypted_size
 from protocol import ProtocolError
 
 MAX_FILE_SIZE = 1024 * 1024 * 1024
+TEMP_FILE_FLAGS = (os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+                   | getattr(os, "O_BINARY", 0))
 FIRST_PACKET_NUMBERS = (0, 1)
 
 
@@ -25,7 +27,7 @@ class FileReceiver:
         self._cksum = Cksum()
         self._received = 0
         self._plain_size = 0
-        self._temp_path.write_bytes(b"")
+        self._fd = os.open(self._temp_path, TEMP_FILE_FLAGS)
 
     @property
     def next_number(self):
@@ -65,6 +67,7 @@ class FileReceiver:
             raise ProtocolError(
                 f"Got {self._received} bytes, expected {self.content_size}")
         self._write_plain(self._decryptor.finish())
+        self._close()
         if self._plain_size != self._first.orig_size:
             raise ProtocolError(
                 f"Decrypted size {self._plain_size} does not match "
@@ -73,13 +76,20 @@ class FileReceiver:
         return self._cksum.digest()
 
     def abort(self):
+        self._close()
         self._temp_path.unlink(missing_ok=True)
 
     def _write_plain(self, data):
-        with open(self._temp_path, "ab") as f:
-            f.write(data)
+        view = memoryview(data)
+        while view:
+            view = view[os.write(self._fd, view):]
         self._cksum.update(data)
         self._plain_size += len(data)
+
+    def _close(self):
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
 
 
 def packet_index(packet, first_number):

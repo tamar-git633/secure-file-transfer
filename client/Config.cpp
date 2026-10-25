@@ -42,9 +42,29 @@ bool isValidHost(std::string_view host)
     return true;
 }
 
+// A path written with single backslashes, like "c:\temp\new.txt", turns
+// \t and \n into control characters. Paths never contain those, so they
+// are turned back into the backslash and the letter.
+std::string restoreBackslashes(const std::string& path)
+{
+    std::string result;
+    for (char c : path) {
+        switch (c) {
+        case '\b': result += "\\b"; break;
+        case '\f': result += "\\f"; break;
+        case '\n': result += "\\n"; break;
+        case '\r': result += "\\r"; break;
+        case '\t': result += "\\t"; break;
+        default: result += c; break;
+        }
+    }
+    return result;
+}
+
 std::filesystem::path pathFromUtf8(const std::string& text)
 {
-    return std::filesystem::path(std::u8string(text.begin(), text.end()));
+    const std::string fixed = restoreBackslashes(text);
+    return std::filesystem::path(std::u8string(fixed.begin(), fixed.end()));
 }
 
 }

@@ -1,53 +1,49 @@
-CRC_POLYNOMIAL = 0x04C11DB7
+import zlib
+
 CRC_MASK = 0xFFFFFFFF
-CRC_TOP_BIT = 0x80000000
 BYTE_MASK = 0xFF
 BITS_IN_BYTE = 8
-TOP_BYTE_SHIFT = 24
-TABLE_SIZE = 256
+BITS_IN_CRC = 32
+BYTE_VALUES = 256
+
+_REVERSED_BYTES = bytes(
+    int(f"{value:0{BITS_IN_BYTE}b}"[::-1], 2) for value in range(BYTE_VALUES)
+)
 
 
-def _build_table():
-    table = []
-    for i in range(TABLE_SIZE):
-        crc = i << TOP_BYTE_SHIFT
-        for _ in range(BITS_IN_BYTE):
-            if crc & CRC_TOP_BIT:
-                crc = ((crc << 1) ^ CRC_POLYNOMIAL) & CRC_MASK
-            else:
-                crc = (crc << 1) & CRC_MASK
-        table.append(crc)
-    return table
+def _reverse_bits(value):
+    return int(f"{value:0{BITS_IN_CRC}b}"[::-1], 2)
 
 
-_TABLE = _build_table()
-
-
-def _crc_byte(crc, byte):
-    index = (crc >> TOP_BYTE_SHIFT) ^ byte
-    return ((crc << BITS_IN_BYTE) & CRC_MASK) ^ _TABLE[index]
-
-
-# Incremental CRC that gives the same result as the Linux cksum command
+# Incremental CRC that gives the same result as the Linux cksum command.
+# cksum works on the high bit first and zlib.crc32 on the low bit first,
+# so the bits of every byte are reversed before zlib (fast, written in C)
+# and the bits of the result are reversed back.
 class Cksum:
     def __init__(self):
-        self._crc = 0
+        self._state = 0
         self._length = 0
 
     def update(self, data):
-        crc = self._crc
-        for byte in data:
-            crc = _crc_byte(crc, byte)
-        self._crc = crc
+        self._feed(bytes(data))
         self._length += len(data)
 
     def digest(self):
-        crc = self._crc
+        length_bytes = bytearray()
         length = self._length
         while length:
-            crc = _crc_byte(crc, length & BYTE_MASK)
+            length_bytes.append(length & BYTE_MASK)
             length >>= BITS_IN_BYTE
-        return ~crc & CRC_MASK
+        state = self._state
+        self._feed(bytes(length_bytes))
+        result = ~_reverse_bits(self._state) & CRC_MASK
+        self._state = state
+        return result
+
+    def _feed(self, data):
+        reversed_data = data.translate(_REVERSED_BYTES)
+        start = ~self._state & CRC_MASK
+        self._state = ~zlib.crc32(reversed_data, start) & CRC_MASK
 
 
 # Calculates the cksum value of a whole buffer

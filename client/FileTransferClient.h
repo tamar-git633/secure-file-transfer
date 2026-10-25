@@ -33,6 +33,7 @@ private:
     bool sendOneFile(const std::filesystem::path& path);
     UploadResult uploadFile(const std::filesystem::path& path);
     void takeAesKey(const Response& response);
+    void reopenConnection();
 
     Response exchange(RequestCode code, std::span<const uint8_t> payload, std::initializer_list<ResponseCode> expected);
     void checkClientId(const ClientId& id) const;

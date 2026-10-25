@@ -42,8 +42,34 @@ TEST(config_hostname_allowed)
 TEST(config_assignment_example_with_single_backslash)
 {
     const std::string json = R"({"server": {"ip": "1.2.3.4", "port": 1, "client": "a"},
-                                 "files": ["c:\doc\file02.docx"]})";
-    CHECK_THROWS(Config::parse(json), ConfigError);
+                                 "files": ["c:\doc\file02.docx", "c:\openu\defensive\file06-2026c.pdf"]})";
+    const Config config = Config::parse(json);
+    CHECK(config.files()[0] == std::filesystem::path("c:\\doc\\file02.docx"));
+    CHECK(config.files()[1] == std::filesystem::path("c:\\openu\\defensive\\file06-2026c.pdf"));
+}
+
+TEST(config_single_backslash_that_looks_like_escape)
+{
+    const std::string json = R"({"server": {"ip": "1.2.3.4", "port": 1, "client": "a"},
+                                 "files": ["c:\temp\new\files\report.txt", "c:\users\bob\run.bin"]})";
+    const Config config = Config::parse(json);
+    CHECK(config.files()[0] == std::filesystem::path("c:\\temp\\new\\files\\report.txt"));
+    CHECK(config.files()[1] == std::filesystem::path("c:\\users\\bob\\run.bin"));
+}
+
+TEST(config_double_backslash_still_works)
+{
+    const std::string json = R"({"server": {"ip": "1.2.3.4", "port": 1, "client": "a"},
+                                 "files": ["c:\\temp\\new.txt"]})";
+    CHECK(Config::parse(json).files()[0] == std::filesystem::path("c:\\temp\\new.txt"));
+}
+
+TEST(json_unknown_escape_is_kept)
+{
+    const std::string unknownEscape = R"("a\qb")";
+    const std::string notHexAfterU = R"("\users")";
+    CHECK(JsonParser::parse(unknownEscape).asString("s") == "a\\qb");
+    CHECK(JsonParser::parse(notHexAfterU).asString("s") == "\\users");
 }
 
 TEST(config_missing_fields)

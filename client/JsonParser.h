@@ -51,6 +51,7 @@ private:
     std::string parseString();
     JsonValue parseNumber();
     JsonValue parseLiteral();
+    bool hasHex4() const;
     unsigned int parseHex4();
     void appendUtf8(std::string& out, unsigned int codePoint);
 

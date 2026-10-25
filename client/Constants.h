@@ -30,7 +30,7 @@ inline constexpr size_t PACKET_CONTENT_SIZE = 64 * 1024;
 inline constexpr uint32_t MAX_PACKETS = UINT16_MAX;
 inline constexpr size_t MAX_RESPONSE_PAYLOAD = 64 * 1024;
 
-inline constexpr int MAX_ATTEMPTS = 3;
+inline constexpr int MAX_RETRIES = 3;
 inline constexpr int MAX_CRC_RESENDS = 3;
 inline constexpr int SOCKET_TIMEOUT_MS = 60 * 1000;
 

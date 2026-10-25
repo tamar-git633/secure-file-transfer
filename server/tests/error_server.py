@@ -4,7 +4,7 @@ import tempfile
 
 import file_receiver
 from client_session import ClientSession, ConnectionClosedError
-from protocol import ProtocolError, RequestCode
+from protocol import ProtocolError, RequestCode, ResponseCode
 from storage import ClientStore
 
 from server import Server
@@ -16,18 +16,21 @@ HANDLER_NAMES = {
     RequestCode.SEND_FILE: "_handle_file_packet",
     RequestCode.CRC_OK: "_handle_crc_ok",
 }
+GARBLED_BYTES = 10
 
 
 # Runs the real server, but one request code fails the first <times> calls:
-# it answers 1607, or with "drop" the server closes the connection.
+#   (no mode) answers 1607
+#   drop      closes the connection
+#   garble    (828 only) sends a broken 1603 answer with a cut payload
 # A failing file upload fails on its last packet, like the real server.
 # Usage (from the server folder):
-#   py -3.12 -m tests.error_server <port> <code> <times> [drop]
+#   py -3.12 -m tests.error_server <port> <code> <times> [drop|garble]
 def main():
     port = int(sys.argv[1])
     code = RequestCode(int(sys.argv[2]))
     failures_left = [int(sys.argv[3])]
-    drop = len(sys.argv) > 4 and sys.argv[4] == "drop"
+    mode = sys.argv[4] if len(sys.argv) > 4 else ""
 
     def should_fail():
         if failures_left[0] > 0:
@@ -35,7 +38,16 @@ def main():
             return True
         return False
 
-    if code == RequestCode.SEND_FILE and not drop:
+    if code == RequestCode.SEND_FILE and mode == "garble":
+        real_send = ClientSession._send
+
+        def garbled_send(self, response_code, payload):
+            if response_code == ResponseCode.FILE_RECEIVED and should_fail():
+                payload = payload[:-GARBLED_BYTES]
+            real_send(self, response_code, payload)
+
+        ClientSession._send = garbled_send
+    elif code == RequestCode.SEND_FILE and mode != "drop":
         real_complete = file_receiver.FileReceiver.complete
 
         def failing_complete(self):
@@ -50,7 +62,7 @@ def main():
 
         def failing_handler(self, header):
             if should_fail():
-                if drop:
+                if mode == "drop":
                     self._sock.close()
                     raise ConnectionClosedError()
                 raise ProtocolError(f"Forced failure of request {code}")

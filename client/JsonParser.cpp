@@ -148,8 +148,8 @@ JsonValue JsonParser::parseArray(int depth)
 }
 
 // Reads a quoted string and handles the escape sequences.
-// A single backslash in a Windows path is a common mistake, so the
-// error message explains how to write it.
+// Windows paths are often written with a single backslash (like the example
+// in the assignment), so an unknown escape such as \d is kept as it is.
 std::string JsonParser::parseString()
 {
     expect('"');
@@ -176,9 +176,16 @@ std::string JsonParser::parseString()
         case 'n': result += '\n'; break;
         case 'r': result += '\r'; break;
         case 't': result += '\t'; break;
-        case 'u': appendUtf8(result, parseHex4()); break;
+        case 'u':
+            if (hasHex4()) {
+                appendUtf8(result, parseHex4());
+            } else {
+                result += "\\u";
+            }
+            break;
         default:
-            fail(std::string("Invalid escape '\\") + escape + "', write paths with \\\\ or /");
+            result += '\\';
+            result += escape;
         }
     }
 }
@@ -219,6 +226,19 @@ JsonValue JsonParser::parseLiteral()
         return JsonValue();
     }
     fail("Unexpected character");
+}
+
+bool JsonParser::hasHex4() const
+{
+    if (m_text.size() - m_pos < HEX_DIGITS) {
+        return false;
+    }
+    for (size_t i = 0; i < HEX_DIGITS; ++i) {
+        if (!std::isxdigit(static_cast<unsigned char>(m_text[m_pos + i]))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 unsigned int JsonParser::parseHex4()

@@ -30,6 +30,7 @@ void FileTransferClient::connectAndGetKey()
         } catch (const ClientError& e) {
             throw ConfigError(std::string(e.what()) + ". Delete me.info and priv.key to register again");
         }
+        std::cout << "Found " << constants::ME_FILE << std::endl;
     }
     std::cout << "Connecting to " << m_config.host() << ":" << m_config.port() << std::endl;
     m_connection = std::make_unique<Connection>(m_config.host(), m_config.port());
@@ -48,6 +49,11 @@ bool FileTransferClient::sendFiles()
     int failed = 0;
     int skipped = 0;
     for (const auto& path : m_config.files()) {
+        if (std::filesystem::is_directory(path)) {
+            std::cout << "Skipping " << text::pathToUtf8(path) << ": this is a folder, not a file" << std::endl;
+            ++skipped;
+            continue;
+        }
         if (!std::filesystem::is_regular_file(path)) {
             std::cout << "Skipping " << text::pathToUtf8(path) << ": file not found" << std::endl;
             ++skipped;
@@ -96,43 +102,64 @@ bool FileTransferClient::sendOneFile(const std::filesystem::path& path)
             std::cout << "CRC failed " << sendCount << " times, giving up on '" << fileName << "'" << std::endl;
             return false;
         }
-        m_connection->sendAll(Protocol::request(m_identity.id, RequestCode::CrcRetry, namePayload));
+        try {
+            m_connection->sendAll(Protocol::request(m_identity.id, RequestCode::CrcRetry, namePayload));
+        } catch (const NetworkError&) {
+            reopenConnection();
+        }
         std::cout << "Sending the file again (" << sendCount << "/" << constants::MAX_CRC_RESENDS << ")" << std::endl;
     }
 }
 
-// Sends the file packets and reads the 1603 answer. If the server answers
-// with an error the file is sent again, up to 3 times.
+// Sends the file packets and reads the 1603 answer. On a server error, a
+// broken answer or a lost connection the file is sent again, up to 3 times.
 FileTransferClient::UploadResult FileTransferClient::uploadFile(const std::filesystem::path& path)
 {
-    for (int attempt = 1; attempt <= constants::MAX_ATTEMPTS; ++attempt) {
-        FileSender sender(*m_connection, m_identity.id, m_aesKey);
-        const SentFile sent = sender.send(path);
-        const Response response = Protocol::readResponse(*m_connection);
-        if (response.code == static_cast<uint16_t>(ResponseCode::FileReceived)) {
-            const FileReceivedPayload received = Protocol::parseFileReceived(response.payload);
-            checkClientId(received.clientId);
-            if (received.fileName != sent.fileName || received.contentSize != sent.contentSize) {
-                throw ProtocolError("Server confirmed a different file");
-            }
-            std::cout << "Server got '" << received.fileName << "', " << received.contentSize << " bytes" << std::endl;
-            return {received.cksum, sent.cksum};
+    std::string lastProblem;
+    for (int attempt = 0; attempt <= constants::MAX_RETRIES; ++attempt) {
+        if (attempt > 0) {
+            std::cout << "Trying again (" << attempt << "/" << constants::MAX_RETRIES << ")" << std::endl;
         }
-        std::cout << "server responded with an error" << std::endl;
-        if (attempt < constants::MAX_ATTEMPTS) {
-            std::cout << "Trying again (" << attempt + 1 << "/" << constants::MAX_ATTEMPTS << ")" << std::endl;
+        try {
+            FileSender sender(*m_connection, m_identity.id, m_aesKey);
+            const SentFile sent = sender.send(path);
+            const Response response = Protocol::readResponse(*m_connection);
+            if (response.code == static_cast<uint16_t>(ResponseCode::FileReceived)) {
+                const FileReceivedPayload received = Protocol::parseFileReceived(response.payload);
+                checkClientId(received.clientId);
+                if (received.fileName != sent.fileName || received.contentSize != sent.contentSize) {
+                    throw ProtocolError("Server confirmed a different file");
+                }
+                std::cout << "Server got '" << received.fileName << "', " << received.contentSize << " bytes"
+                          << std::endl;
+                return {received.cksum, sent.cksum};
+            }
+            lastProblem = "server answered " + std::to_string(response.code);
+            std::cout << "server responded with an error" << std::endl;
+        } catch (const NetworkError& e) {
+            lastProblem = e.what();
+            std::cout << "server responded with an error (" << e.what() << ")" << std::endl;
+            if (attempt < constants::MAX_RETRIES) {
+                reopenConnection();
+            }
+        } catch (const ProtocolError& e) {
+            lastProblem = e.what();
+            std::cout << "server responded with an error (" << e.what() << ")" << std::endl;
+            if (attempt < constants::MAX_RETRIES) {
+                reopenConnection();
+            }
         }
     }
     throw ServerError("Sending file " + text::pathToUtf8(path.filename()) + " failed " +
-                      std::to_string(constants::MAX_ATTEMPTS) + " times");
+                      std::to_string(constants::MAX_RETRIES + 1) + " times, last problem: " + lastProblem);
 }
 
 // Request 827, used when me.info exists. The saved RSA key is reused.
 // Returns false if the server does not know us (1606).
 bool FileTransferClient::reconnect()
 {
-    std::cout << "Found " << constants::ME_FILE << ", reconnecting as '" << m_identity.name << "' (ID "
-              << ClientInfo::idToHex(m_identity.id) << ")" << std::endl;
+    std::cout << "Reconnecting as '" << m_identity.name << "' (ID " << ClientInfo::idToHex(m_identity.id) << ")"
+              << std::endl;
 
     const auto response = exchange(RequestCode::Reconnect, Protocol::namePayload(m_identity.name),
                                    {ResponseCode::ReconnectOk, ResponseCode::ReconnectDenied});
@@ -183,34 +210,62 @@ void FileTransferClient::takeAesKey(const Response& response)
     std::cout << "Received AES key from the server" << std::endl;
 }
 
-// Sends a request and reads the response. Any other response code is
-// treated as a server error: the request is sent again, up to 3 times.
+// Opens a new connection after the old one broke. If the keys were already
+// exchanged, the session is restored with a reconnect (827) and a new AES key.
+void FileTransferClient::reopenConnection()
+{
+    std::cout << "Opening a new connection to the server" << std::endl;
+    m_connection = std::make_unique<Connection>(m_config.host(), m_config.port());
+    if (!m_aesKey.empty()) {
+        m_aesKey.clear();
+        if (!reconnect()) {
+            throw ServerError("The server does not know this client anymore");
+        }
+    }
+}
+
+// Sends a request and reads the response. A server error, a broken answer
+// or a lost connection counts as an error: the request is sent again,
+// up to 3 more times. A broken connection is opened again first.
 Response FileTransferClient::exchange(RequestCode code, std::span<const uint8_t> payload,
                                       std::initializer_list<ResponseCode> expected)
 {
     const auto message = Protocol::request(m_identity.id, code, payload);
-    uint16_t lastCode = 0;
-    for (int attempt = 1; attempt <= constants::MAX_ATTEMPTS; ++attempt) {
-        m_connection->sendAll(message);
-        Response response = Protocol::readResponse(*m_connection);
-        if (response.version != constants::SERVER_VERSION) {
-            std::cout << "Warning: server version is " << static_cast<int>(response.version) << std::endl;
+    std::string lastProblem;
+    for (int attempt = 0; attempt <= constants::MAX_RETRIES; ++attempt) {
+        if (attempt > 0) {
+            std::cout << "Trying again (" << attempt << "/" << constants::MAX_RETRIES << ")" << std::endl;
         }
-        const bool ok = std::any_of(expected.begin(), expected.end(), [&](ResponseCode accepted) {
-            return response.code == static_cast<uint16_t>(accepted);
-        });
-        if (ok) {
-            return response;
-        }
-        lastCode = response.code;
-        std::cout << "server responded with an error" << std::endl;
-        if (attempt < constants::MAX_ATTEMPTS) {
-            std::cout << "Trying again (" << attempt + 1 << "/" << constants::MAX_ATTEMPTS << ")" << std::endl;
+        try {
+            m_connection->sendAll(message);
+            Response response = Protocol::readResponse(*m_connection);
+            if (response.version != constants::SERVER_VERSION) {
+                std::cout << "Warning: server version is " << static_cast<int>(response.version) << std::endl;
+            }
+            const bool ok = std::any_of(expected.begin(), expected.end(), [&](ResponseCode accepted) {
+                return response.code == static_cast<uint16_t>(accepted);
+            });
+            if (ok) {
+                return response;
+            }
+            lastProblem = "server answered " + std::to_string(response.code);
+            std::cout << "server responded with an error" << std::endl;
+        } catch (const NetworkError& e) {
+            lastProblem = e.what();
+            std::cout << "server responded with an error (" << e.what() << ")" << std::endl;
+            if (attempt < constants::MAX_RETRIES) {
+                reopenConnection();
+            }
+        } catch (const ProtocolError& e) {
+            lastProblem = e.what();
+            std::cout << "server responded with an error (" << e.what() << ")" << std::endl;
+            if (attempt < constants::MAX_RETRIES) {
+                reopenConnection();
+            }
         }
     }
     throw ServerError("Request " + std::to_string(static_cast<int>(code)) + " failed " +
-                      std::to_string(constants::MAX_ATTEMPTS) + " times, last server response was " +
-                      std::to_string(lastCode));
+                      std::to_string(constants::MAX_RETRIES + 1) + " times, last problem: " + lastProblem);
 }
 
 void FileTransferClient::checkClientId(const ClientId& id) const
