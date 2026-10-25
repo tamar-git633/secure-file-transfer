@@ -1,3 +1,4 @@
+# RSA and AES helpers of the server
 from pathlib import Path
 
 from Crypto.Cipher import AES, PKCS1_OAEP
@@ -20,7 +21,6 @@ def generate_aes_key():
     return get_random_bytes(AES_KEY_SIZE)
 
 
-# Encrypts data with the client's RSA public key (X.509 DER format)
 def encrypt_with_public_key(public_key_der, data):
     try:
         key = RSA.import_key(public_key_der)
@@ -31,13 +31,10 @@ def encrypt_with_public_key(public_key_der, data):
     return PKCS1_OAEP.new(key).encrypt(data)
 
 
-# Size of the AES-CBC output for a file of the given size (PKCS7 padding)
 def encrypted_size(orig_size):
     return (orig_size // AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE
 
 
-# Decrypts AES-256-CBC data with a zero IV piece by piece.
-# The last block is held back until finish() so the padding can be removed.
 class AesStreamDecryptor:
     def __init__(self, key):
         if len(key) != AES_KEY_SIZE:
@@ -68,8 +65,6 @@ class AesStreamDecryptor:
             raise CryptoError("Bad padding, wrong key?") from None
 
 
-# Decrypts src_path into dst_path chunk by chunk.
-# on_chunk is called with every decrypted chunk. Returns the plain size.
 def decrypt_file_streaming(key, src_path, dst_path, on_chunk=None):
     decryptor = AesStreamDecryptor(key)
     written = 0

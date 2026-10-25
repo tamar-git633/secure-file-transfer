@@ -1,3 +1,4 @@
+// Sending one file to the server in encrypted packets
 #include "FileSender.h"
 
 #include <algorithm>
@@ -21,7 +22,6 @@ FileSender::FileSender(Connection& connection, const ClientId& clientId, std::sp
 {
 }
 
-// The protocol carries only the file name (not the folder), in ASCII
 std::string FileSender::protocolFileName(const std::filesystem::path& path)
 {
     const std::u8string utf8 = path.filename().u8string();
@@ -37,7 +37,6 @@ std::string FileSender::protocolFileName(const std::filesystem::path& path)
     return name;
 }
 
-// The encrypted size must fit the 4 byte Content Size field
 uint32_t FileSender::checkedContentSize(uint64_t origSize)
 {
     const uint64_t contentSize = AesStreamEncryptor::encryptedSize(origSize);
@@ -57,9 +56,6 @@ uint16_t FileSender::packetCount(uint32_t contentSize)
     return static_cast<uint16_t>(count);
 }
 
-// Reads the file in blocks, encrypts each block and sends a packet every
-// time a full packet of encrypted data is ready. Memory use stays around
-// two packets no matter how big the file is.
 SentFile FileSender::send(const std::filesystem::path& path)
 {
     std::error_code error;

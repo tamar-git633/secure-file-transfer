@@ -1,3 +1,4 @@
+// Loading and checking transfer.json
 #include "Config.h"
 
 #include <cctype>
@@ -42,9 +43,6 @@ bool isValidHost(std::string_view host)
     return true;
 }
 
-// A path written with single backslashes, like "c:\temp\new.txt", turns
-// \t and \n into control characters. Paths never contain those, so they
-// are turned back into the backslash and the letter.
 std::string restoreBackslashes(const std::string& path)
 {
     std::string result;
@@ -88,7 +86,6 @@ Config Config::load(const std::filesystem::path& path)
     return parse(content);
 }
 
-// Parses transfer.json text and checks every field
 Config Config::parse(std::string_view json)
 {
     const JsonValue root = JsonParser::parse(json);

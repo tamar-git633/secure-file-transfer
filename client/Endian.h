@@ -1,3 +1,4 @@
+// Little endian reading and writing of numbers
 #pragma once
 
 #include <cstddef>
@@ -12,8 +13,6 @@ namespace endian {
 inline constexpr unsigned int BITS_PER_BYTE = 8;
 inline constexpr uint32_t BYTE_MASK = 0xFF;
 
-// Appends an unsigned value to the buffer in little endian order,
-// byte by byte, so the result does not depend on the CPU
 template <typename T>
 void appendLE(std::vector<uint8_t>& out, T value)
 {
@@ -22,8 +21,6 @@ void appendLE(std::vector<uint8_t>& out, T value)
     }
 }
 
-// Reads an unsigned little endian value at the given offset,
-// throws ProtocolError if it does not fit in the buffer
 template <typename T>
 T readLE(std::span<const uint8_t> data, size_t offset)
 {

@@ -1,3 +1,4 @@
+# Protocol constants and message parsing and building
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
@@ -12,7 +13,6 @@ AES_KEY_SIZE = 32
 NULL_BYTE = b"\x00"
 
 
-# Request codes sent by the client
 class RequestCode(IntEnum):
     REGISTER = 825
     SEND_PUBLIC_KEY = 826
@@ -23,7 +23,6 @@ class RequestCode(IntEnum):
     CRC_ABORT = 902
 
 
-# Response codes sent by the server
 class ResponseCode(IntEnum):
     REGISTER_OK = 1600
     REGISTER_FAILED = 1601
@@ -72,14 +71,12 @@ class FilePacketHeader:
     file_name: str
 
 
-# Parses the fixed size header that starts every request
 def parse_request_header(data):
     if len(data) != REQUEST_HEADER.size:
         raise ProtocolError(f"Bad header size {len(data)}")
     return RequestHeader(*REQUEST_HEADER.unpack(data))
 
 
-# Checks that the payload size matches the request code
 def validate_payload_size(code, payload_size):
     if code == RequestCode.SEND_FILE:
         if payload_size < FILE_PACKET_HEADER.size:
@@ -95,12 +92,10 @@ def validate_payload_size(code, payload_size):
         )
 
 
-# Builds a full response message: header followed by payload
 def build_response(code, payload=b""):
     return RESPONSE_HEADER.pack(SERVER_VERSION, code, len(payload)) + payload
 
 
-# Converts a string into a null terminated, zero padded field
 def pack_name(name):
     try:
         raw = name.encode("ascii")
@@ -111,7 +106,6 @@ def pack_name(name):
     return raw.ljust(NAME_SIZE, NULL_BYTE)
 
 
-# Extracts a string from a null terminated field
 def unpack_name(field):
     if len(field) != NAME_SIZE:
         raise ProtocolError(f"Name field must be {NAME_SIZE} bytes")
@@ -135,7 +129,6 @@ def parse_public_key_payload(payload):
     return unpack_name(name_field), public_key
 
 
-# Parses the fixed part of a file packet (828), the content follows it
 def parse_file_packet_header(data):
     content_size, orig_size, packet_number, total_packets, name_field = (
         FILE_PACKET_HEADER.unpack(data)
@@ -159,7 +152,6 @@ def build_aes_key_payload(client_id, encrypted_aes_key):
     return build_client_id_payload(client_id) + encrypted_aes_key
 
 
-# Payload of response 1603: client ID, content size, file name, cksum
 def build_file_received_payload(client_id, content_size, file_name, cksum):
     return FILE_RECEIVED_PAYLOAD.pack(
         build_client_id_payload(client_id),

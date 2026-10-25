@@ -1,3 +1,4 @@
+// Reading and writing me.info and priv.key
 #pragma once
 
 #include <cstdint>
@@ -8,15 +9,12 @@
 
 #include "Constants.h"
 
-// What the client keeps in me.info: name, ID from the server, private key
 struct ClientIdentity {
     std::string name;
     ClientId id{};
     std::vector<uint8_t> privateKeyDer;
 };
 
-// Reads and writes me.info (name, client ID, private key) and priv.key
-// in the folder of the client program
 class ClientInfo {
 public:
     explicit ClientInfo(std::filesystem::path directory);

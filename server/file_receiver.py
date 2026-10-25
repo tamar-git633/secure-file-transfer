@@ -1,3 +1,4 @@
+# Receiving one encrypted file sent in 828 packets
 import os
 import shutil
 from pathlib import Path
@@ -12,8 +13,6 @@ TEMP_FILE_FLAGS = (os.O_WRONLY | os.O_CREAT | os.O_TRUNC
 FIRST_PACKET_NUMBERS = (0, 1)
 
 
-# Receives one encrypted file sent in 828 packets, decrypts every piece
-# as it arrives into a temp file and calculates the cksum on the way
 class FileReceiver:
     def __init__(self, first_packet, final_path, temp_path, aes_key):
         _check_first_packet(first_packet, final_path)
@@ -60,8 +59,6 @@ class FileReceiver:
         self._received += len(encrypted_chunk)
         self._write_plain(self._decryptor.update(encrypted_chunk))
 
-    # Called after the last packet. Checks the sizes, moves the temp file
-    # to its final name and returns the cksum of the decrypted file.
     def complete(self):
         if self._received != self.content_size:
             raise ProtocolError(

@@ -1,3 +1,4 @@
+// Building requests and parsing responses
 #pragma once
 
 #include <cstdint>
@@ -10,7 +11,6 @@
 
 class Connection;
 
-// A response from the server: header fields and the raw payload
 struct Response {
     uint8_t version = 0;
     uint16_t code = 0;
@@ -29,7 +29,6 @@ struct FileReceivedPayload {
     uint32_t cksum = 0;
 };
 
-// The fixed fields at the start of every 828 packet
 struct FilePacketInfo {
     uint32_t contentSize = 0;
     uint32_t origSize = 0;
@@ -38,8 +37,6 @@ struct FilePacketInfo {
     std::string fileName;
 };
 
-// Builds the binary requests and parses the responses of the protocol.
-// All numbers are little endian, names are 255 byte null terminated fields.
 class Protocol {
 public:
     static std::vector<uint8_t> requestHeader(const ClientId& clientId, RequestCode code, uint32_t payloadSize);

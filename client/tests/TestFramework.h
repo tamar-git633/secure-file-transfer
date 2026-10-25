@@ -1,3 +1,4 @@
+// Minimal test framework
 #pragma once
 
 #include <functional>

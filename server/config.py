@@ -1,3 +1,4 @@
+# Reading the server port from port.info
 import logging
 from pathlib import Path
 
@@ -16,8 +17,6 @@ def _use_default(reason):
     return DEFAULT_PORT
 
 
-# Reads the listening port from port.info.
-# Returns the default port if the file is missing or invalid.
 def read_port(path=PORT_FILE):
     if path is None:
         return _use_default("No port file given")

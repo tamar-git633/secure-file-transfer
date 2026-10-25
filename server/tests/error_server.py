@@ -1,3 +1,4 @@
+# Server that fails chosen requests, for testing the client
 import logging
 import sys
 import tempfile
@@ -19,13 +20,6 @@ HANDLER_NAMES = {
 GARBLED_BYTES = 10
 
 
-# Runs the real server, but one request code fails the first <times> calls:
-#   (no mode) answers 1607
-#   drop      closes the connection
-#   garble    (828 only) sends a broken 1603 answer with a cut payload
-# A failing file upload fails on its last packet, like the real server.
-# Usage (from the server folder):
-#   py -3.12 -m tests.error_server <port> <code> <times> [drop|garble]
 def main():
     port = int(sys.argv[1])
     code = RequestCode(int(sys.argv[2]))

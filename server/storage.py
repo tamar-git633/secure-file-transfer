@@ -1,3 +1,4 @@
+# In-memory storage of clients and received files
 import ntpath
 import threading
 import uuid
@@ -35,8 +36,6 @@ class FileRecord:
     verified: bool = False
 
 
-# Returns a safe file name for saving on the server, raises StorageError
-# for anything that could escape the client's folder or is invalid on Windows
 def sanitize_file_name(name):
     if ".." in name:
         raise StorageError(f"File name '{name}' contains '..'")
@@ -53,10 +52,6 @@ def sanitize_file_name(name):
     return base
 
 
-# Keeps registered clients and received files in memory.
-# All access goes through a lock because every client runs in its own thread.
-# With a database every change is saved there first, and the data is loaded
-# from it when the server starts.
 class ClientStore:
     def __init__(self, files_dir=FILES_DIR, db=None):
         self._files_dir = Path(files_dir).resolve()
@@ -102,8 +97,6 @@ class ClientStore:
     def set_aes_key(self, client_id, aes_key):
         self._update_client(client_id, aes_key=aes_key)
 
-    # Updates the last seen time. LastSeen is kept to the second, so the
-    # database is written only when the second changes (not on every packet).
     def touch(self, client_id):
         now = datetime.now()
         with self._lock:
@@ -127,8 +120,6 @@ class ClientStore:
             for key, value in vars(updated).items():
                 setattr(client, key, value)
 
-    # Returns (final path, temp path) for a file of this client.
-    # Creates the client's folder if needed.
     def file_paths(self, client_id, file_name):
         safe_name = sanitize_file_name(file_name)
         client_dir = self._files_dir / client_id.hex()
@@ -160,8 +151,6 @@ class ClientStore:
                 self._db.save_file(replace(record, verified=True))
             record.verified = True
 
-    # Deletes the file from disk (including a leftover temp file)
-    # and forgets its record
     def remove_file(self, client_id, file_name):
         with self._lock:
             record = self._files.get((client_id, file_name))
@@ -179,8 +168,6 @@ class ClientStore:
         if self._db:
             self._db.save_client(client)
 
-    # Paths are kept relative to the server folder (the parent of the
-    # received files folder), like "received_files/<client id>/report.pdf"
     def _relative_path(self, path):
         try:
             return Path(path).resolve().relative_to(
@@ -188,8 +175,6 @@ class ClientStore:
         except ValueError:
             return str(path)
 
-    # Loads clients and files saved before a restart. A file record whose
-    # file is no longer on the disk is dropped.
     def _load_from_db(self):
         for client in self._db.load_clients():
             self._clients_by_id[client.id] = client

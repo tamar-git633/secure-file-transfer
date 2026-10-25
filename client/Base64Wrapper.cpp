@@ -1,3 +1,4 @@
+// Base64 encoding and decoding
 #include "Base64Wrapper.h"
 
 #include <base64.h>
@@ -21,8 +22,6 @@ std::string Base64Wrapper::encode(std::span<const uint8_t> data)
     return encoded;
 }
 
-// Decodes Base64 text, throws CryptoError if it has characters
-// that are not part of the Base64 alphabet
 std::vector<uint8_t> Base64Wrapper::decode(std::string_view text)
 {
     if (text.find_first_not_of(BASE64_CHARS) != std::string_view::npos) {

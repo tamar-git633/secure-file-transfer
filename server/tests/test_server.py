@@ -1,3 +1,4 @@
+# Network tests for the server
 import logging
 import socket
 import tempfile

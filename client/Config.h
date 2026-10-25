@@ -1,3 +1,4 @@
+// Loading and checking transfer.json
 #pragma once
 
 #include <cstdint>
@@ -6,8 +7,6 @@
 #include <string_view>
 #include <vector>
 
-// Settings from transfer.json: server address, client name and the files
-// to send. Everything is validated when loading.
 class Config {
 public:
     static Config load(const std::filesystem::path& path);

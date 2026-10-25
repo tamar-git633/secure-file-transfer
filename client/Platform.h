@@ -1,7 +1,6 @@
+// Windows and Winsock headers
 #pragma once
 
-// Windows and Winsock headers, included in one place so that the old
-// winsock.h and the min/max macros of windows.h do not get in the way
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif

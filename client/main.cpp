@@ -1,3 +1,4 @@
+// File transfer client entry point
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -14,7 +15,6 @@ namespace {
 constexpr DWORD INITIAL_PATH_SIZE = MAX_PATH;
 constexpr DWORD MAX_PATH_SIZE = 32 * 1024;
 
-// The folder of the running exe, transfer.json and me.info are kept there
 std::filesystem::path executableDirectory()
 {
     std::wstring buffer(INITIAL_PATH_SIZE, L'\0');

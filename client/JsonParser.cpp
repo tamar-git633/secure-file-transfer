@@ -1,3 +1,4 @@
+// Minimal JSON parser for transfer.json
 #include "JsonParser.h"
 
 #include <charconv>
@@ -147,9 +148,6 @@ JsonValue JsonParser::parseArray(int depth)
     }
 }
 
-// Reads a quoted string and handles the escape sequences.
-// Windows paths are often written with a single backslash (like the example
-// in the assignment), so an unknown escape such as \d is kept as it is.
 std::string JsonParser::parseString()
 {
     expect('"');

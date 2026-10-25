@@ -1,3 +1,4 @@
+// TCP connection to the server over Winsock
 #include "Connection.h"
 
 #include <algorithm>
@@ -47,7 +48,6 @@ WinsockSession::~WinsockSession()
     WSACleanup();
 }
 
-// Resolves the host and connects to the first address that answers
 Connection::Connection(const std::string& host, uint16_t port, int timeoutMs)
 {
     addrinfo hints{};
@@ -93,7 +93,6 @@ Connection::~Connection()
     }
 }
 
-// Sends the whole buffer, send() may take only part of it each time
 void Connection::sendAll(std::span<const uint8_t> data)
 {
     size_t sent = 0;
@@ -107,8 +106,6 @@ void Connection::sendAll(std::span<const uint8_t> data)
     }
 }
 
-// Receives exactly size bytes, throws NetworkError if the server
-// closes the connection or does not answer in time
 std::vector<uint8_t> Connection::recvExact(size_t size)
 {
     std::vector<uint8_t> buffer(size);

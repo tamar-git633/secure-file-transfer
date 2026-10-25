@@ -1,3 +1,4 @@
+# SQLite database (defensive.db) for clients and received files
 import sqlite3
 import threading
 from datetime import datetime
@@ -43,8 +44,6 @@ ON CONFLICT (ID, FileName) DO UPDATE SET
     Verified = excluded.Verified"""
 
 
-# Keeps clients and received files in defensive.db (SQLite), so the server
-# can load them again after a restart. Every query uses parameters.
 class Database:
     def __init__(self, path=DB_FILE):
         self._lock = threading.Lock()

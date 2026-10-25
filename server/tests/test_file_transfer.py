@@ -1,3 +1,4 @@
+# File transfer tests for the server
 import os
 import struct
 import time

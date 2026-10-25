@@ -1,3 +1,4 @@
+# Tests for database.py
 import sqlite3
 import tempfile
 import threading

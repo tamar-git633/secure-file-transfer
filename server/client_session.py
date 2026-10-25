@@ -1,3 +1,4 @@
+# Handling of one connected client and its requests
 import logging
 
 from crypto_utils import CryptoError, encrypt_with_public_key, generate_aes_key
@@ -32,8 +33,6 @@ class ConnectionClosedError(Exception):
     pass
 
 
-# Handles one connected client: reads requests in a loop, dispatches them
-# by request code and sends back the response. Runs in its own thread.
 class ClientSession:
     def __init__(self, sock, address, store):
         self._sock = sock
@@ -131,8 +130,6 @@ class ClientSession:
         validate_payload_size(header.code, header.payload_size)
         return handler(header)
 
-    # Request 825: registers a new client name and returns its new UUID.
-    # The client ID in the header is ignored.
     def _handle_register(self, header):
         try:
             name = parse_name_payload(self._read_payload(header.payload_size))
@@ -150,8 +147,6 @@ class ClientSession:
         logger.info("Registered '%s' with ID %s", name, client.id.hex())
         return ResponseCode.REGISTER_OK, build_client_id_payload(client.id)
 
-    # Request 826: saves the client's RSA public key, creates a new AES key
-    # and sends it back encrypted with that public key
     def _handle_public_key(self, header):
         name, public_key = parse_public_key_payload(
             self._read_payload(header.payload_size))
@@ -169,8 +164,6 @@ class ClientSession:
         return ResponseCode.AES_KEY, build_aes_key_payload(client.id,
                                                            encrypted_key)
 
-    # Request 827: reconnect of a known client, sends a new AES key
-    # encrypted with the saved public key, or 1606
     def _handle_reconnect(self, header):
         name = parse_name_payload(self._read_payload(header.payload_size))
         client = self._store.get_by_name(name)
@@ -196,8 +189,6 @@ class ClientSession:
         return (ResponseCode.RECONNECT_DENIED,
                 build_client_id_payload(client_id))
 
-    # Request 828: one packet of an encrypted file.
-    # Answers only after the last packet.
     def _handle_file_packet(self, header):
         packet = parse_file_packet_header(
             self._read_payload(FILE_PACKET_HEADER.size))
@@ -264,23 +255,18 @@ class ClientSession:
                                 "reconnect first")
         return client
 
-    # Request 900: the client's CRC matches, the file is marked as verified
     def _handle_crc_ok(self, header):
         client, file_name = self._read_crc_request(header)
         self._store.set_verified(client.id, file_name)
         logger.info("File '%s' verified by '%s'", file_name, client.name)
         return ResponseCode.ACK, build_client_id_payload(client.id)
 
-    # Request 901: CRC mismatch, the client will send the file again.
-    # The bad file is deleted and no response is sent.
     def _handle_crc_retry(self, header):
         client, file_name = self._read_crc_request(header)
         self._store.remove_file(client.id, file_name)
         logger.warning("CRC mismatch on '%s', waiting for the file again",
                        file_name)
 
-    # Request 902: CRC failed for the fourth time, the client gives up.
-    # The file is deleted from disk together with its record.
     def _handle_crc_abort(self, header):
         client, file_name = self._read_crc_request(header)
         self._store.remove_file(client.id, file_name)

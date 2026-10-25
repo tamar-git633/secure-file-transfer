@@ -1,3 +1,4 @@
+// Small text helpers (UTF-8 BOM, paths)
 #pragma once
 
 #include <filesystem>
@@ -8,7 +9,6 @@ namespace text {
 
 inline constexpr std::string_view UTF8_BOM = "\xEF\xBB\xBF";
 
-// Editors like Notepad may save a UTF-8 BOM at the start of a text file
 inline void stripUtf8Bom(std::string& content)
 {
     if (content.starts_with(UTF8_BOM)) {
@@ -16,7 +16,6 @@ inline void stripUtf8Bom(std::string& content)
     }
 }
 
-// A path as UTF-8 text, works for paths with any characters (Hebrew etc.)
 inline std::string pathToUtf8(const std::filesystem::path& path)
 {
     const std::u8string utf8 = path.u8string();

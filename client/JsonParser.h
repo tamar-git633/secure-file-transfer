@@ -1,3 +1,4 @@
+// Minimal JSON parser for transfer.json
 #pragma once
 
 #include <map>
@@ -7,7 +8,6 @@
 #include <variant>
 #include <vector>
 
-// A parsed JSON value: null, bool, number, string, array or object
 class JsonValue {
 public:
     using Array = std::vector<JsonValue>;
@@ -36,8 +36,6 @@ private:
     std::variant<std::monostate, bool, double, std::string, Array, Object> m_value;
 };
 
-// Minimal JSON parser, enough for transfer.json.
-// Throws ConfigError with the position of the problem on invalid input.
 class JsonParser {
 public:
     static JsonValue parse(std::string_view text);

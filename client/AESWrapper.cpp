@@ -1,3 +1,4 @@
+// AES-256-CBC encryption of files, piece by piece
 #include "AESWrapper.h"
 
 #include <array>
@@ -17,8 +18,6 @@ AesStreamEncryptor::AesStreamEncryptor(std::span<const uint8_t> key)
         m_encryption, new CryptoPP::VectorSink(m_output), CryptoPP::StreamTransformationFilter::PKCS_PADDING);
 }
 
-// Encrypts the next piece and returns the encrypted bytes that are ready,
-// a partial block is kept until more data or finish()
 std::vector<uint8_t> AesStreamEncryptor::update(std::span<const uint8_t> plain)
 {
     if (m_finished) {
@@ -28,7 +27,6 @@ std::vector<uint8_t> AesStreamEncryptor::update(std::span<const uint8_t> plain)
     return std::exchange(m_output, {});
 }
 
-// Adds the padding and returns the last encrypted block(s)
 std::vector<uint8_t> AesStreamEncryptor::finish()
 {
     if (m_finished) {

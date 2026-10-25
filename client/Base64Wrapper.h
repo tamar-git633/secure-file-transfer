@@ -1,3 +1,4 @@
+// Base64 encoding and decoding
 #pragma once
 
 #include <cstdint>
@@ -6,7 +7,6 @@
 #include <string_view>
 #include <vector>
 
-// Base64 encoding of binary data, used to keep the private key in text files
 class Base64Wrapper {
 public:
     static std::string encode(std::span<const uint8_t> data);

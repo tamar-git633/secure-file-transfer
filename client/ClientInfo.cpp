@@ -1,3 +1,4 @@
+// Reading and writing me.info and priv.key
 #include "ClientInfo.h"
 
 #include <charconv>
@@ -56,8 +57,6 @@ std::vector<std::string> splitLines(const std::string& text)
     return lines;
 }
 
-// Writes to a temp file first and then renames it, so a crash in the middle
-// never leaves a half written file behind
 void writeFile(const std::filesystem::path& path, const std::string& content)
 {
     auto temp = path;
@@ -101,8 +100,6 @@ bool ClientInfo::exists() const
     return std::filesystem::is_regular_file(m_meFile);
 }
 
-// Loads the saved identity. The private key is taken from priv.key,
-// or from the third line of me.info if priv.key is missing.
 ClientIdentity ClientInfo::load() const
 {
     const auto lines = splitLines(readSmallFile(m_meFile));

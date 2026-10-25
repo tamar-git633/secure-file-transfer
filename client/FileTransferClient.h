@@ -1,3 +1,4 @@
+// Main flow of the client: register or reconnect, then send the files
 #pragma once
 
 #include <filesystem>
@@ -12,8 +13,6 @@
 #include "Protocol.h"
 #include "RSAWrapper.h"
 
-// Runs the whole client flow: connects to the server, registers or
-// reconnects, gets the AES key and sends the files from transfer.json
 class FileTransferClient {
 public:
     explicit FileTransferClient(const std::filesystem::path& workDir);

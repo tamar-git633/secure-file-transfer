@@ -1,3 +1,4 @@
+// AES-256-CBC encryption of files, piece by piece
 #pragma once
 
 #include <cstdint>
@@ -9,8 +10,6 @@
 #include <filters.h>
 #include <modes.h>
 
-// Encrypts with AES-256-CBC (zero IV, PKCS7 padding) piece by piece,
-// so a big file never has to be in memory all at once
 class AesStreamEncryptor {
 public:
     explicit AesStreamEncryptor(std::span<const uint8_t> key);

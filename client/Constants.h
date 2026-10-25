@@ -1,3 +1,4 @@
+// Protocol constants and codes
 #pragma once
 
 #include <array>

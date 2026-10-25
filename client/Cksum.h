@@ -1,9 +1,9 @@
+// CRC calculation that matches the Linux cksum command
 #pragma once
 
 #include <cstdint>
 #include <span>
 
-// Incremental CRC that gives the same result as the Linux cksum command
 class Cksum {
 public:
     void update(std::span<const uint8_t> data);
@@ -14,5 +14,4 @@ private:
     uint64_t m_length = 0;
 };
 
-// Calculates the cksum value of a whole buffer
 uint32_t memcrc(std::span<const uint8_t> data);

@@ -1,3 +1,4 @@
+// RSA key pair of the client
 #include "RSAWrapper.h"
 
 #include <filters.h>
@@ -16,8 +17,6 @@ RSAPrivateWrapper::RSAPrivateWrapper()
     m_privateKey.GenerateRandomWithKeySize(m_rng, constants::RSA_KEY_BITS);
 }
 
-// Loads a private key saved earlier, throws CryptoError if the data
-// is not a valid RSA key of the expected size
 RSAPrivateWrapper::RSAPrivateWrapper(std::span<const uint8_t> privateKeyDer)
 {
     try {
@@ -49,7 +48,6 @@ std::vector<uint8_t> RSAPrivateWrapper::publicKeyDer() const
     return der;
 }
 
-// Decrypts data that was encrypted with our public key (RSA OAEP SHA1)
 std::vector<uint8_t> RSAPrivateWrapper::decrypt(std::span<const uint8_t> cipher)
 {
     CryptoPP::RSAES_OAEP_SHA_Decryptor decryptor(m_privateKey);

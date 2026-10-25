@@ -1,3 +1,4 @@
+# Checks that the C++ client crypto matches the server
 import os
 import subprocess
 import sys
@@ -30,9 +31,6 @@ def check(condition, message):
     return condition
 
 
-# Runs C++ and the real server code against each other:
-# RSA key from C++, AES key from Python, file encrypted in C++,
-# decrypted and verified by the server code
 def main():
     tool = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_TOOL
     with tempfile.TemporaryDirectory() as tmp:

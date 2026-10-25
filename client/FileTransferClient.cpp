@@ -1,3 +1,4 @@
+// Main flow of the client: register or reconnect, then send the files
 #include "FileTransferClient.h"
 
 #include <algorithm>
@@ -18,8 +19,6 @@ bool FileTransferClient::run()
     return sendFiles();
 }
 
-// me.info is read before connecting, so a broken file is reported
-// right away even when the server is down
 void FileTransferClient::connectAndGetKey()
 {
     const bool registeredBefore = m_info.exists();
@@ -41,8 +40,6 @@ void FileTransferClient::connectAndGetKey()
     sendPublicKey();
 }
 
-// Sends every file from transfer.json. A file that cannot be sent (missing,
-// locked, bad name) is skipped. Returns true only if all files were verified.
 bool FileTransferClient::sendFiles()
 {
     int verified = 0;
@@ -74,8 +71,6 @@ bool FileTransferClient::sendFiles()
     return failed == 0 && skipped == 0;
 }
 
-// Sends a file and compares the CRC. On a mismatch the client sends 901
-// and the file again, after the fourth mismatch it gives up with 902.
 bool FileTransferClient::sendOneFile(const std::filesystem::path& path)
 {
     const std::string fileName = FileSender::protocolFileName(path);
@@ -111,8 +106,6 @@ bool FileTransferClient::sendOneFile(const std::filesystem::path& path)
     }
 }
 
-// Sends the file packets and reads the 1603 answer. On a server error, a
-// broken answer or a lost connection the file is sent again, up to 3 times.
 FileTransferClient::UploadResult FileTransferClient::uploadFile(const std::filesystem::path& path)
 {
     std::string lastProblem;
@@ -154,8 +147,6 @@ FileTransferClient::UploadResult FileTransferClient::uploadFile(const std::files
                       std::to_string(constants::MAX_RETRIES + 1) + " times, last problem: " + lastProblem);
 }
 
-// Request 827, used when me.info exists. The saved RSA key is reused.
-// Returns false if the server does not know us (1606).
 bool FileTransferClient::reconnect()
 {
     std::cout << "Reconnecting as '" << m_identity.name << "' (ID " << ClientInfo::idToHex(m_identity.id) << ")"
@@ -171,8 +162,6 @@ bool FileTransferClient::reconnect()
     return true;
 }
 
-// Request 825. The server returns our new client ID, then a new RSA key
-// pair is created and saved to me.info and priv.key.
 void FileTransferClient::registerNew()
 {
     m_identity = ClientIdentity{};
@@ -191,7 +180,6 @@ void FileTransferClient::registerNew()
               << std::endl;
 }
 
-// Request 826, the answer (1602) has the AES key encrypted with our public key
 void FileTransferClient::sendPublicKey()
 {
     std::cout << "Sending public key" << std::endl;
@@ -210,8 +198,6 @@ void FileTransferClient::takeAesKey(const Response& response)
     std::cout << "Received AES key from the server" << std::endl;
 }
 
-// Opens a new connection after the old one broke. If the keys were already
-// exchanged, the session is restored with a reconnect (827) and a new AES key.
 void FileTransferClient::reopenConnection()
 {
     std::cout << "Opening a new connection to the server" << std::endl;
@@ -224,9 +210,6 @@ void FileTransferClient::reopenConnection()
     }
 }
 
-// Sends a request and reads the response. A server error, a broken answer
-// or a lost connection counts as an error: the request is sent again,
-// up to 3 more times. A broken connection is opened again first.
 Response FileTransferClient::exchange(RequestCode code, std::span<const uint8_t> payload,
                                       std::initializer_list<ResponseCode> expected)
 {

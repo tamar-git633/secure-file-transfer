@@ -1,3 +1,4 @@
+# File transfer server: entry point and connection listener
 import logging
 import socket
 import sys
@@ -14,7 +15,6 @@ ACCEPT_POLL_INTERVAL = 0.2
 logger = logging.getLogger(__name__)
 
 
-# Listens for clients and starts a thread with a ClientSession for each one
 class Server:
     def __init__(self, port, store):
         self._store = store
@@ -42,8 +42,6 @@ class Server:
         self._stopped.set()
 
 
-# Opens defensive.db and loads the clients and files saved before.
-# If the database cannot be used the server keeps the data in memory only.
 def open_store():
     db = None
     try:
@@ -60,7 +58,6 @@ def open_store():
     return store
 
 
-# Reads the port, starts listening and serves clients until stopped
 def main():
     logging.basicConfig(
         level=logging.INFO,

@@ -1,3 +1,4 @@
+// TCP connection to the server over Winsock
 #pragma once
 
 #include <cstdint>
@@ -9,7 +10,6 @@
 
 #include "Constants.h"
 
-// Starts Winsock in the constructor and cleans it up in the destructor
 class WinsockSession {
 public:
     WinsockSession();
@@ -18,8 +18,6 @@ public:
     WinsockSession& operator=(const WinsockSession&) = delete;
 };
 
-// A TCP connection to the server. The socket is closed automatically
-// when the object is destroyed.
 class Connection {
 public:
     Connection(const std::string& host, uint16_t port, int timeoutMs = constants::SOCKET_TIMEOUT_MS);

@@ -1,3 +1,4 @@
+# Server that sends wrong CRC answers, for testing the client
 import logging
 import sys
 import tempfile
@@ -11,10 +12,6 @@ from server import Server
 CRC_MASK = 0xFFFFFFFF
 
 
-# Runs the real server but sends a wrong cksum in the first <bad> answers
-# to file uploads, to test the client's 901/902 handling.
-# Usage (from the server folder):
-#   py -3.12 -m tests.bad_crc_server <port> <bad answers>
 def main():
     port = int(sys.argv[1])
     bad_left = [int(sys.argv[2])]

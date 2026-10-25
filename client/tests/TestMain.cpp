@@ -1,3 +1,4 @@
+// Runs all client tests
 #include <exception>
 #include <filesystem>
 #include <iostream>

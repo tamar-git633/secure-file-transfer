@@ -1,3 +1,4 @@
+// CRC calculation that matches the Linux cksum command
 #include "Cksum.h"
 
 #include <array>

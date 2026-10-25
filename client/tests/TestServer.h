@@ -1,3 +1,4 @@
+// Local test server for the client tests
 #pragma once
 
 #include <atomic>
@@ -38,7 +39,6 @@ inline std::vector<uint8_t> recvRaw(SOCKET s, size_t size)
     return data;
 }
 
-// Listens on a free local port and runs the handler on the first client
 class TestServer {
 public:
     explicit TestServer(std::function<void(SOCKET)> handler)

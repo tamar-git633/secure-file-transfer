@@ -1,3 +1,4 @@
+// Building requests and parsing responses
 #include "Protocol.h"
 
 #include <algorithm>
@@ -47,8 +48,6 @@ std::vector<uint8_t> Protocol::request(const ClientId& clientId, RequestCode cod
     return message;
 }
 
-// Puts a name in a 255 byte field padded with zeros. The name must leave
-// room for the terminating null and must not contain a null itself.
 std::vector<uint8_t> Protocol::packName(std::string_view name)
 {
     if (name.empty() || name.size() >= constants::NAME_SIZE) {
@@ -101,8 +100,6 @@ std::vector<uint8_t> Protocol::filePacketHeader(const FilePacketInfo& info)
     return header;
 }
 
-// Reads one full response. The payload size from the server is checked
-// before allocating memory for it.
 Response Protocol::readResponse(Connection& connection)
 {
     const auto header = connection.recvExact(constants::RESPONSE_HEADER_SIZE);

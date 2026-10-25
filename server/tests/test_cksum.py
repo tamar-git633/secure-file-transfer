@@ -1,3 +1,4 @@
+# Tests for cksum.py
 import os
 import unittest
 

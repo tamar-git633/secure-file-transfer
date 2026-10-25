@@ -1,3 +1,4 @@
+# CRC calculation that matches the Linux cksum command
 import zlib
 
 CRC_MASK = 0xFFFFFFFF
@@ -15,10 +16,6 @@ def _reverse_bits(value):
     return int(f"{value:0{BITS_IN_CRC}b}"[::-1], 2)
 
 
-# Incremental CRC that gives the same result as the Linux cksum command.
-# cksum works on the high bit first and zlib.crc32 on the low bit first,
-# so the bits of every byte are reversed before zlib (fast, written in C)
-# and the bits of the result are reversed back.
 class Cksum:
     def __init__(self):
         self._state = 0
@@ -46,7 +43,6 @@ class Cksum:
         self._state = ~zlib.crc32(reversed_data, start) & CRC_MASK
 
 
-# Calculates the cksum value of a whole buffer
 def memcrc(data):
     checksum = Cksum()
     checksum.update(data)

@@ -1,3 +1,4 @@
+// RSA key pair of the client
 #pragma once
 
 #include <cstdint>
@@ -7,8 +8,6 @@
 #include <osrng.h>
 #include <rsa.h>
 
-// Holds the client's RSA private key: creates or loads it, exports the
-// public key for the server and decrypts the AES key the server sends
 class RSAPrivateWrapper {
 public:
     RSAPrivateWrapper();

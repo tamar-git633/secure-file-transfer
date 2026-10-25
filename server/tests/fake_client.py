@@ -1,3 +1,4 @@
+# Simple protocol client used to test the server
 import socket
 import struct
 import sys
@@ -42,7 +43,6 @@ def aes_encrypt(key, data):
     return AES.new(key, AES.MODE_CBC, iv=bytes(16)).encrypt(pad(data, 16))
 
 
-# Builds the 828 payloads for a file, split into packets of packet_size
 def build_file_packets(data, file_name, aes_key, packet_size=PACKET_SIZE,
                        first_number=1):
     encrypted = aes_encrypt(aes_key, data)
@@ -61,7 +61,6 @@ def parse_file_received(payload):
     return client_id, size, name.split(b"\x00")[0].decode(), crc
 
 
-# Minimal protocol client used to test the server without the C++ client
 class FakeClient:
     def __init__(self, host="127.0.0.1", port=1234, timeout=10):
         self.sock = socket.create_connection((host, port), timeout=timeout)
@@ -135,8 +134,6 @@ class FakeClient:
         return data
 
 
-# Usage (from the server folder):
-#   py -3.12 -m tests.fake_client <port> <name> [file to send]
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 1234
     name = sys.argv[2] if len(sys.argv) > 2 else "Fake Client"
