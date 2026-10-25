@@ -102,8 +102,20 @@ class ClientStore:
     def set_aes_key(self, client_id, aes_key):
         self._update_client(client_id, aes_key=aes_key)
 
+    # Updates the last seen time. LastSeen is kept to the second, so the
+    # database is written only when the second changes (not on every packet).
     def touch(self, client_id):
-        self._update_client(client_id)
+        now = datetime.now()
+        with self._lock:
+            client = self._clients_by_id.get(client_id)
+            if client is None:
+                raise StorageError("Unknown client")
+            same_second = (client.last_seen is not None and
+                           client.last_seen.replace(microsecond=0) ==
+                           now.replace(microsecond=0))
+            if not same_second:
+                self._save_client(replace(client, last_seen=now))
+            client.last_seen = now
 
     def _update_client(self, client_id, **fields):
         with self._lock:

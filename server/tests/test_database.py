@@ -73,6 +73,24 @@ class ClientsTableTest(DatabaseTestCase):
         self.assertEqual(aes_key, AES_KEY)
         self.assertIsNotNone(last_seen)
 
+    def test_touch_writes_once_per_second(self):
+        store = self.open_store()
+        client = store.register("alice")
+        writes = []
+        db = self.databases[-1]
+        real_save = db.save_client
+        db.save_client = lambda c: (writes.append(c.last_seen), real_save(c))
+        for _ in range(500):
+            store.touch(client.id)
+        self.assertLessEqual(len(writes), 2)
+        (last_seen,), = self.rows("SELECT LastSeen FROM clients")
+        self.assertEqual(last_seen,
+                         client.last_seen.isoformat(timespec="seconds"))
+
+    def test_touch_unknown_client(self):
+        with self.assertRaises(StorageError):
+            self.open_store().touch(bytes(16))
+
     def test_restart_loads_clients(self):
         store = self.open_store()
         client = store.register("alice")
