@@ -97,6 +97,7 @@ class ClientSession:
             logger.exception("Unexpected error in request %d", header.code)
             response = (ResponseCode.GENERAL_ERROR, b"")
 
+        self._update_last_seen()
         keep_open = True
         too_much_left = (header.code != RequestCode.SEND_FILE
                          and self._unread > MAX_SKIP_SIZE)
@@ -110,6 +111,14 @@ class ClientSession:
         if response is not None:
             self._send(*response)
         return keep_open
+
+    def _update_last_seen(self):
+        if self._client is None:
+            return
+        try:
+            self._store.touch(self._client.id)
+        except StorageError as e:
+            logger.warning("Cannot update last seen time: %s", e)
 
     def _send(self, code, payload):
         self._sock.sendall(build_response(code, payload))

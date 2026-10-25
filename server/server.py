@@ -5,8 +5,9 @@ import threading
 
 from client_session import ClientSession
 from config import read_port
+from database import DB_FILE, Database
 from protocol import SERVER_VERSION
-from storage import ClientStore
+from storage import ClientStore, StorageError
 
 ACCEPT_POLL_INTERVAL = 0.2
 
@@ -41,6 +42,24 @@ class Server:
         self._stopped.set()
 
 
+# Opens defensive.db and loads the clients and files saved before.
+# If the database cannot be used the server keeps the data in memory only.
+def open_store():
+    db = None
+    try:
+        db = Database()
+        store = ClientStore(db=db)
+    except StorageError as e:
+        if db:
+            db.close()
+        logger.error("Cannot use %s (%s), keeping data in memory only",
+                     DB_FILE.name, e)
+        return ClientStore()
+    logger.info("Loaded %d clients and %d files from %s",
+                store.client_count, store.file_count, DB_FILE.name)
+    return store
+
+
 # Reads the port, starts listening and serves clients until stopped
 def main():
     logging.basicConfig(
@@ -50,7 +69,7 @@ def main():
     )
     port = read_port()
     try:
-        server = Server(port, ClientStore())
+        server = Server(port, open_store())
     except OSError as e:
         logger.error("Cannot listen on port %d: %s", port, e)
         return 1

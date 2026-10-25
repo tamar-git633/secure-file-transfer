@@ -133,6 +133,12 @@ class FakeDb:
     def __init__(self):
         self.calls = []
 
+    def load_clients(self):
+        return []
+
+    def load_files(self):
+        return []
+
     def save_client(self, client):
         self.calls.append(("client", client.name))
 
